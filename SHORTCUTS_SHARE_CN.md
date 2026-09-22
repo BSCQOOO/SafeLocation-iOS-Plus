@@ -24,21 +24,25 @@ Apple 地图 → 打开地点 → 分享 → 选择刚才的「Safe Location」�
 
 ## 纯蜂窝 Developer Tunnel 实验
 
-Safe Location 的实验分支支持在没有 Wi-Fi / 热点时，通过 Shortcuts 临时切换蜂窝数据来建立本机 Developer Tunnel。
+Safe Location 的实验分支支持没有 Wi-Fi / 热点时，通过 LocalDevVPN + 飞行模式建立本机 Developer Tunnel。
 
 ### 一次设置
 
 在系统「快捷指令」App 新建两个快捷指令：
 
-1. **TurnOffData**：只添加一个“设置蜂窝数据”动作，设为**关闭**。
-2. **TurnOnData**：只添加一个“设置蜂窝数据”动作，设为**打开**。
+1. **SafeLocation Airplane On**：只添加一个“设置飞行模式”动作，设为**打开**。
+2. **SafeLocation Airplane Off**：只添加一个“设置飞行模式”动作，设为**关闭**。
 
-如果你已经给 SideStore 创建过同名快捷指令，可以直接复用。名称也可以在 Safe Location → 设置 → 纯蜂窝实验中修改。
+名称也可以在 Safe Location → 设置 → 纯蜂窝实验中修改。
+
+> 不要把第一个快捷指令做成“关闭蜂窝数据”。无 Wi-Fi 路径需要先保持 4G/5G 可用并连接 LocalDevVPN，再临时打开飞行模式，让本机 utun 路由继续用于 RPPairing / RSD / DVT。
 
 ### 使用流程
 
-只保留 4G/5G、关闭 Wi-Fi，然后正常在 Safe Location 点 Teleport。App 会自动执行：
+关闭 Wi-Fi，只保留 4G/5G，然后正常在 Safe Location 点 Teleport。App 会执行：
 
-Safe Location → LocalDevVPN → TurnOffData → Safe Location → RPPairing / RSD / DVT → TurnOnData → Safe Location。
+Safe Location → LocalDevVPN → SafeLocation Airplane On → Safe Location → RPPairing / RSD / DVT → SafeLocation Airplane Off → Safe Location。
 
-Shortcuts 使用 Apple 的 x-callback-url 回到 Safe Location，因此正常使用时不需要手动切换 App。
+Safe Location 使用 Shortcuts x-callback-url 自动返回。如果 Shortcuts 的回调丢失，App 回到前台后还会检查物理蜂窝接口与 LocalDevVPN utun：飞行模式已经成功且 utun 仍存在时会继续建链，否则会直接给出明确错误，不再让流程挂起。
+
+如果系统「快捷指令」列表为空，请先完成上面的两个快捷指令再测试纯蜂窝模式。
