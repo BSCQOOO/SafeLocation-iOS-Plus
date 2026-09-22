@@ -8,54 +8,12 @@ enum MapCoordinateConverter {
         case gcj02 = "GCJ-02"
     }
 
-    /// MapKit can expose different coordinate representations depending on
-    /// the active Apple Maps service region. Safe Location keeps the injected
-    /// coordinate canonical in WGS-84 and converts only at the map boundary.
+    /// Apple Maps' mainland-China map service uses GCJ-02 at the map
+    /// boundary. Everywhere else is kept in WGS-84. The actual geographic
+    /// gate is applied per coordinate below, so this no longer depends on a
+    /// network probe, device language, or a search-result name.
     static func detectMapCoordinateSystem() async -> MapCoordinateSystem {
-        await withTaskGroup(of: MapCoordinateSystem?.self) { group in
-            group.addTask {
-                let request = MKLocalSearch.Request()
-                request.naturalLanguageQuery = "22.283819, 114.158439"
-
-                do {
-                    let response = try await MKLocalSearch(request: request).start()
-                    guard let first = response.mapItems.first else {
-                        return nil
-                    }
-
-                    let name = (first.name ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                        .lowercased()
-
-                    // This fixed Hong Kong anchor is intentionally independent
-                    // from the user's/spoofed location. On the domestic MapKit
-                    // representation its first result is 林士街 (or a localized
-                    // transliteration of the same street).
-                    if name.contains("林士") ||
-                        name.contains("lin shi") ||
-                        name.contains("linshi") {
-                        return .gcj02
-                    }
-
-                    return .wgs84
-                } catch {
-                    return nil
-                }
-            }
-
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 4_500_000_000)
-                return nil
-            }
-
-            let detected = await group.next() ?? nil
-            group.cancelAll()
-
-            // The current product is primarily used with mainland Apple Maps.
-            // A failed probe must be conservative: GCJ-02 prevents the large
-            // map-selection offset reported on domestic tiles.
-            return detected ?? .gcj02
-        }
+        .gcj02
     }
 
     static func mapToWGS84(
@@ -150,13 +108,110 @@ enum MapCoordinateConverter {
         latitude: Double,
         longitude: Double
     ) -> Bool {
-        let broadChina =
-            latitude >= 0.8293 &&
-            latitude <= 55.8271 &&
-            longitude >= 72.004 &&
-            longitude <= 137.8347
+        // Never transform Hong Kong, Macau or Taiwan. The old implementation
+        // used one huge rectangle that also captured Seoul, Busan, Okinawa,
+        // Taiwan and parts of Southeast Asia, creating hundreds-of-metres
+        // offsets outside mainland China.
+        if latitude >= 22.08, latitude <= 22.58,
+           longitude >= 113.80, longitude <= 114.52 {
+            return false
+        }
 
-        return broadChina
+        if latitude >= 22.05, latitude <= 22.24,
+           longitude >= 113.52, longitude <= 113.64 {
+            return false
+        }
+
+        if latitude >= 21.75, latitude <= 25.45,
+           longitude >= 119.25, longitude <= 122.20 {
+            return false
+        }
+
+        // Hainan uses the mainland Apple Maps service as well.
+        if latitude >= 18.0, latitude <= 20.35,
+           longitude >= 108.5, longitude <= 111.5 {
+            return true
+        }
+
+        return pointInMainlandPolygon(
+            latitude: latitude,
+            longitude: longitude
+        )
+    }
+
+    private static let mainlandPolygon: [
+        (latitude: Double, longitude: Double)
+    ] = [
+        (53.6, 121.5),
+        (53.0, 134.8),
+        (48.0, 134.8),
+        (43.0, 131.0),
+        (40.5, 124.5),
+        (37.0, 122.5),
+        (30.0, 122.8),
+        (24.0, 118.5),
+        (21.5, 112.0),
+        (20.7, 109.5),
+        (22.0, 106.5),
+        (24.0, 104.0),
+        (28.0, 98.0),
+        (28.5, 94.0),
+        (30.0, 88.0),
+        (27.5, 80.0),
+        (31.5, 78.0),
+        (35.0, 73.5),
+        (40.5, 73.5),
+        (45.0, 82.0),
+        (49.0, 87.0),
+        (49.0, 117.0)
+    ]
+
+    private static func pointInMainlandPolygon(
+        latitude: Double,
+        longitude: Double
+    ) -> Bool {
+        var inside = false
+        var previous = mainlandPolygon.count - 1
+
+        for index in mainlandPolygon.indices {
+            let currentPoint = mainlandPolygon[index]
+            let previousPoint = mainlandPolygon[previous]
+
+            let crossesLatitude =
+                (currentPoint.latitude > latitude)
+                != (previousPoint.latitude > latitude)
+
+            if crossesLatitude {
+                let denominator =
+                    previousPoint.latitude
+                    - currentPoint.latitude
+
+                let safeDenominator =
+                    abs(denominator) < 0.0000001
+                    ? 0.0000001
+                    : denominator
+
+                let boundaryLongitude =
+                    (
+                        previousPoint.longitude
+                        - currentPoint.longitude
+                    )
+                    * (
+                        latitude
+                        - currentPoint.latitude
+                    )
+                    / safeDenominator
+                    + currentPoint.longitude
+
+                if longitude < boundaryLongitude {
+                    inside.toggle()
+                }
+            }
+
+            previous = index
+        }
+
+        return inside
     }
 
     private static func delta(
