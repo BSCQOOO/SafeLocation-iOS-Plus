@@ -174,9 +174,9 @@ final class SpoofController: ObservableObject {
                   self.pendingTeleport != nil else { return }
 
             guard LocalDevVPN.isConnected else {
-                let message = "蜂窝数据关闭后 LocalDevVPN 的 utun 消失，无法继续 Developer Tunnel。"
+                let message = "开启飞行模式后 LocalDevVPN 的 utun 消失，无法继续 Developer Tunnel。"
                 self.abortPendingCellularFlow(message)
-                _ = CellularTunnelBridge.shared.runTurnOnDataShortcut()
+                _ = CellularTunnelBridge.shared.runAirplaneOffShortcut()
                 return
             }
 
@@ -196,6 +196,64 @@ final class SpoofController: ObservableObject {
         }
     }
 
+    func handleForegroundReturnFromExternalFlow(
+        pairing: PairingStore
+    ) {
+        let bridge = CellularTunnelBridge.shared
+        guard pendingTeleport != nil || bridge.stage == .enablingCellular else {
+            return
+        }
+
+        let generation = cellularFlowGeneration
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            // Give x-callback-url a chance to arrive first. If it does, that
+            // callback bumps the flow generation and this fallback exits.
+            try? await Task.sleep(nanoseconds: 650_000_000)
+
+            guard generation == self.cellularFlowGeneration else {
+                return
+            }
+
+            switch bridge.stage {
+            case .disablingCellular:
+                guard self.pendingTeleport != nil else { return }
+
+                // Airplane Mode can complete even when Shortcuts loses the
+                // x-success callback. If the cellular interface disappeared
+                // but LocalDevVPN's utun survived, continue the DVT flow.
+                if LocalDevVPN.isConnected,
+                   !bridge.hasActiveCellularInterface {
+                    self.handleCellularDataOffCallback(pairing: pairing)
+                    return
+                }
+
+                self.abortPendingCellularFlow(
+                    "没有收到“\(bridge.turnOffShortcutName)”的完成回调。"
+                    + "录屏显示系统快捷指令库为空。请先创建该快捷指令，"
+                    + "动作只需“设置飞行模式：打开”，然后再次 Teleport。"
+                )
+
+            case .enablingCellular:
+                let message =
+                    "没有收到“\(bridge.turnOnShortcutName)”的完成回调。"
+                    + "请确认该快捷指令的动作是“设置飞行模式：关闭”。"
+                bridge.recordFailure(message)
+
+                if self.isSpoofing {
+                    self.lastError = "模拟定位已经生效，但\(message)"
+                } else {
+                    self.fail(message)
+                }
+
+            default:
+                break
+            }
+        }
+    }
+
     func handleCellularShortcutFailure(_ url: URL) {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let phase = items.first(where: { $0.name == "phase" })?.value ?? "unknown"
@@ -207,7 +265,7 @@ final class SpoofController: ObservableObject {
             return
         }
 
-        let message = "蜂窝数据未能自动恢复：\(detail)"
+        let message = "飞行模式未能自动关闭：\(detail)"
         CellularTunnelBridge.shared.recordFailure(message)
         if isSpoofing {
             lastError = "模拟定位已经生效，但\(message)"
@@ -443,15 +501,15 @@ final class SpoofController: ObservableObject {
         }
 
         if pendingTeleport.requiresCellularWorkaround {
-            guard bridge.runTurnOffDataShortcut() else {
+            guard bridge.runAirplaneOnShortcut() else {
                 abortPendingCellularFlow(
-                    bridge.lastError ?? "无法运行关闭蜂窝数据的快捷指令。"
+                    bridge.lastError ?? "无法运行开启飞行模式的快捷指令。"
                 )
                 return
             }
             scheduleCellularFlowTimeout(
                 seconds: 20,
-                message: "等待关闭蜂窝数据的快捷指令回调超时。"
+                message: "等待开启飞行模式的快捷指令回调超时。请确认已创建 SafeLocation Airplane On。"
             )
             return
         }
@@ -487,9 +545,9 @@ final class SpoofController: ObservableObject {
 
         if restoreCellularAfter {
             let originalError = lastError
-            if !CellularTunnelBridge.shared.runTurnOnDataShortcut() {
+            if !CellularTunnelBridge.shared.runAirplaneOffShortcut() {
                 let warning = CellularTunnelBridge.shared.lastError
-                    ?? "无法运行恢复蜂窝数据的快捷指令。"
+                    ?? "无法运行关闭飞行模式的快捷指令。"
                 if success {
                     lastError = "模拟定位已经生效，但\(warning)"
                 } else {
