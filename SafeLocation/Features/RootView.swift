@@ -542,7 +542,7 @@ struct RootView: View {
                 }
             }
 
-            if isResolvingInput {
+            if isResolvingInput || search.isSearching {
                 ProgressView()
                     .controlSize(.small)
             }
@@ -624,25 +624,16 @@ struct RootView: View {
                         id: \.offset
                     ) { _, result in
                         Button {
-                            Task {
-                                do {
-                                    let resolved = try await search.resolve(
-                                        result
-                                    )
+                            let resolved = search.select(result)
 
-                                    selectMapCoordinate(
-                                        resolved.coordinate,
-                                        name: resolved.name
-                                    )
+                            selectMapCoordinate(
+                                resolved.coordinate,
+                                name: resolved.name
+                            )
 
-                                    cancelSearch(
-                                        clearQuery: true
-                                    )
-                                } catch {
-                                    alertText = error
-                                        .localizedDescription
-                                }
-                            }
+                            cancelSearch(
+                                clearQuery: true
+                            )
                         } label: {
                             HStack(spacing: 12) {
                                 ZStack {
