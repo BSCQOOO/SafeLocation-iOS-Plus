@@ -149,5 +149,12 @@ grep -q 'handleForegroundReturnFromExternalFlow' SafeLocation/Engine/SpoofContro
 grep -q 'cellular-off-ready' SafeLocation/App/SafeLocationApp.swift
 grep -q 'SafeLocation Airplane On' SafeLocation/Engine/CellularTunnelBridge.swift
 grep -q 'nanoseconds: 220_000_000' SafeLocation/Features/RootView.swift
+grep -q 'setSearchCenter' SafeLocation/Features/SearchController.swift
+grep -q 'resolveNearbyQuery' SafeLocation/Features/SearchController.swift
+grep -q 'latitudinalMeters: 35_000' SafeLocation/Features/SearchController.swift
+grep -q 'refreshSearchCenter' SafeLocation/Features/RootView.swift
+! grep -q 'private var connectionSection' SafeLocation/Features/RootView.swift
+grep -q 'retention-days: 7' .github/workflows/build-unsigned-ipa.yml
+grep -q 'retention-days: 3' .github/workflows/build-unsigned-ipa.yml
 grep -q '<string>shortcuts</string>' SafeLocation/Resources/Info.plist
 echo "Quality checks passed."
