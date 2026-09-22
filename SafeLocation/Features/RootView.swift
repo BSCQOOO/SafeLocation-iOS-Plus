@@ -1936,7 +1936,7 @@ struct RootView: View {
                let nearby = try await search.resolveAppleMapsStyleQuery(text) {
                 selectMapCoordinate(
                     nearby.coordinate,
-                    name: nearby.name
+                    name: nearby.title
                 )
 
                 cancelSearch(clearQuery: true)
