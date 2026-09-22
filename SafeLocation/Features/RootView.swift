@@ -281,6 +281,10 @@ struct RootView: View {
             .onMapCameraChange(frequency: .continuous) { context in
                 liveCamera = context.camera
                 isThreeD = context.camera.pitch > 12
+
+                if searchMode {
+                    refreshSearchCenter()
+                }
             }
             .onTapGesture { point in
                 guard !searchMode, !joystickMode else { return }
@@ -1873,21 +1877,32 @@ struct RootView: View {
     }
 
     private func refreshSearchCenter() {
+        if let camera = liveCamera {
+            search.setSearchContext(
+                center: camera.centerCoordinate,
+                visibleRadius: max(
+                    6_000,
+                    min(35_000, camera.distance * 1.35)
+                )
+            )
+            return
+        }
+
         let anchor =
             session.simulatedCoordinate
+            ?? session.selectedCoordinate
             ?? mapLocation.bestRealCoordinate(
                 maxAge: 30,
                 maxHorizontalAccuracy: 250
             )
-            ?? session.selectedCoordinate
 
         guard let anchor else {
-            search.setSearchCenter(nil)
+            search.setSearchContext(center: nil)
             return
         }
 
-        search.setSearchCenter(
-            mapDisplayCoordinate(
+        search.setSearchContext(
+            center: mapDisplayCoordinate(
                 fromWGS84: anchor
             )
         )
@@ -1927,7 +1942,7 @@ struct RootView: View {
 
             if LocationInputParser.parse(text) == nil,
                !text.contains("://"),
-               let nearby = try await search.resolveNearbyQuery(text) {
+               let nearby = try await search.resolveAppleMapsStyleQuery(text) {
                 selectMapCoordinate(
                     nearby.coordinate,
                     name: nearby.name
