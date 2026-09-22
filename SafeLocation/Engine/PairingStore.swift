@@ -1,0 +1,87 @@
+import Foundation
+import UniformTypeIdentifiers
+import UIKit
+
+@MainActor
+final class PairingStore: ObservableObject {
+    @Published private(set) var hasPairingFile = false
+    @Published var lastError: String?
+
+    static let fileName = "rp_pairing_file.plist"
+
+    private var directoryURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Pairing", isDirectory: true)
+    }
+
+    var pairingURL: URL { directoryURL.appendingPathComponent(Self.fileName) }
+    var pairingPath: String { pairingURL.path }
+
+    init() { refresh() }
+
+    func refresh() {
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        hasPairingFile = FileManager.default.fileExists(atPath: pairingURL.path)
+    }
+
+    func importPairing(from sourceURL: URL) throws {
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
+        try installPairingData(Data(contentsOf: sourceURL))
+    }
+
+    func importPairingFromClipboard() throws {
+        let board = UIPasteboard.general
+        if let url = board.url, url.isFileURL {
+            try importPairing(from: url)
+            return
+        }
+        let candidates: [Data?] = [
+            board.data(forPasteboardType: "com.apple.property-list"),
+            board.data(forPasteboardType: UTType.propertyList.identifier),
+            board.data(forPasteboardType: UTType.xml.identifier),
+            board.string?.data(using: .utf8)
+        ]
+        guard let data = candidates.compactMap({ $0 }).first(where: { !$0.isEmpty }) else {
+            throw PairingImportError.emptyClipboard
+        }
+        try installPairingData(data)
+    }
+
+    func removePairing() throws {
+        if FileManager.default.fileExists(atPath: pairingURL.path) {
+            try FileManager.default.removeItem(at: pairingURL)
+        }
+        hasPairingFile = false
+    }
+
+    private func installPairingData(_ data: Data) throws {
+        guard looksLikePairingPlist(data) else { throw PairingImportError.invalidContents }
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try data.write(to: pairingURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pairingURL.path)
+        hasPairingFile = true
+        lastError = nil
+    }
+
+    private func looksLikePairingPlist(_ data: Data) -> Bool {
+        if let obj = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) {
+            return obj is [AnyHashable: Any] || obj is [Any]
+        }
+        guard let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return text.hasPrefix("<?xml") || text.hasPrefix("bplist") || text.contains("<plist")
+    }
+}
+
+enum PairingImportError: LocalizedError {
+    case emptyClipboard
+    case invalidContents
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyClipboard: return "剪贴板里没有可用的 RPPairing 文件。"
+        case .invalidContents: return "内容不像有效的 RPPairing plist。"
+        }
+    }
+}

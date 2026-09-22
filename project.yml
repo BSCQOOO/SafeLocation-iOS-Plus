@@ -1,0 +1,50 @@
+name: SafeLocation
+options:
+  bundleIdPrefix: com.safelocation
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+targets:
+  SafeLocation:
+    type: application
+    platform: iOS
+    sources:
+      - path: SafeLocation
+        excludes:
+          - "**/Info.plist"
+      - path: Vendor/idevice/module.modulemap
+        buildPhase: none
+      - path: Vendor/idevice/idevice.h
+        buildPhase: none
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.safelocation.mobile
+        PRODUCT_NAME: "Safe Location"
+        MARKETING_VERSION: "1.8.0"
+        CURRENT_PROJECT_VERSION: "22"
+        INFOPLIST_FILE: SafeLocation/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SafeLocation/Resources/SafeLocation.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: false
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(PROJECT_DIR)/Vendor/idevice"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lidevice_ffi"
+          - "-lc++"
+          - "-lz"
+        SWIFT_INCLUDE_PATHS: "$(PROJECT_DIR)/Vendor/idevice"
+        HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/Vendor/idevice"
+        ENABLE_BITCODE: NO
+        SUPPORTS_MACCATALYST: NO

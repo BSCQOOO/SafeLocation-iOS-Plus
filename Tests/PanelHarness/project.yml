@@ -1,0 +1,43 @@
+name: PanelHarness
+options:
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGNING_ALLOWED: NO
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  PanelHarness:
+    type: application
+    platform: iOS
+    sources:
+      - App.swift
+      - ../../SafeLocation/Support/DrawerState.swift
+      - ../../SafeLocation/Support/PersistentMapPanel.swift
+      - ../../SafeLocation/Support/GlassUI.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.safelocation.paneltests
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+  PanelInteractionTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - PanelInteractionTests.swift
+    dependencies:
+      - target: PanelHarness
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.safelocation.paneltests.ui
+        TEST_TARGET_NAME: PanelHarness
+schemes:
+  PanelHarness:
+    build:
+      targets:
+        PanelHarness: all
+        PanelInteractionTests: [test]
+    test:
+      targets: [PanelInteractionTests]

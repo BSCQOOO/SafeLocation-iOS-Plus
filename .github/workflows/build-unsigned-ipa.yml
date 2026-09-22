@@ -1,0 +1,65 @@
+name: Build Safe Location unsigned IPA
+
+# macOS runners consume the account's limited Actions minutes quickly.
+# Build only when explicitly requested from the Actions page.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Run source checks
+        run: bash ./Scripts/quality_check.sh
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build and verify unsigned IPA
+        run: bash ./Scripts/build_unsigned_ipa.sh
+
+      - name: Test persistent panel interactions
+        run: bash ./Scripts/test_panel_ui.sh
+
+      - name: Show artifact info
+        id: artifact
+        run: |
+          python3 - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          report=json.loads(Path('ipa-verification.json').read_text())
+          name=f"SafeLocation-unsigned-v{report['version']}-b{report['build']}-r{os.environ['GITHUB_RUN_NUMBER']}"
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'name={name}\n')
+          print(json.dumps(report,indent=2))
+          PYCODE
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: |
+            SafeLocation-unsigned.ipa
+            ipa-verification.json
+          if-no-files-found: error
+
+      - name: Upload interaction test evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: Panel-interaction-tests-r${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
