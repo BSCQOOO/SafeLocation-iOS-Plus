@@ -1,3 +1,4 @@
+import CoreLocation
 import Darwin
 import Foundation
 import idevice
@@ -42,9 +43,23 @@ enum LocationEngine {
     static var isSessionActive: Bool { simulation != nil }
 
     static func set(latitude: Double, longitude: Double, pairingPath: String, deviceIP: String) -> Result<Void, LocationEngineError> {
+        let selected = CLLocationCoordinate2D(
+            latitude: latitude,
+            longitude: longitude
+        )
+        let dvtCoordinate =
+            CoordinatePipeline.dvtFromSelected(
+                selected
+            )
+
         var result: Result<Void, LocationEngineError> = .failure(.locationSet)
         queue.sync {
-            let code = setLocked(latitude: latitude, longitude: longitude, pairingPath: pairingPath, deviceIP: deviceIP)
+            let code = setLocked(
+                latitude: dvtCoordinate.latitude,
+                longitude: dvtCoordinate.longitude,
+                pairingPath: pairingPath,
+                deviceIP: deviceIP
+            )
             result = code == 0 ? .success(()) : .failure(.from(code: code))
         }
         return result
@@ -105,9 +120,18 @@ enum LocationEngine {
                 return
             }
 
-            let setCode = setLocked(
+            let selected = CLLocationCoordinate2D(
                 latitude: latitude,
-                longitude: longitude,
+                longitude: longitude
+            )
+            let dvtCoordinate =
+                CoordinatePipeline.dvtFromSelected(
+                    selected
+                )
+
+            let setCode = setLocked(
+                latitude: dvtCoordinate.latitude,
+                longitude: dvtCoordinate.longitude,
                 pairingPath: pairingPath,
                 deviceIP: deviceIP
             )

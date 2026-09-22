@@ -87,6 +87,7 @@ final class SpoofController: ObservableObject {
     func requestLocationPermission() { keeper.requestPermission() }
 
     func select(_ coordinate: CLLocationCoordinate2D, name: String? = nil, autoRestoreMinutes: Int? = nil, travelMode: TravelMode? = nil) {
+        CoordinatePipeline.logSelected(coordinate)
         selectedCoordinate = coordinate
         selectedName = (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? name! : Self.coordinateLabel(coordinate)
         if let autoRestoreMinutes, autoRestoreMinutes > 0 { pendingAutoRestoreMinutes = autoRestoreMinutes }

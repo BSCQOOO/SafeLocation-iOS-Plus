@@ -51,8 +51,6 @@ struct RootView: View {
     @State private var isThreeD = false
     @State private var liveCamera: MapCamera?
     @State private var mapTrackingMode: MapTrackingMode = .free
-    @State private var mapCoordinateSystem =
-        MapCoordinateConverter.MapCoordinateSystem.gcj02
 
     private var searchMode: Bool {
         searchFocused || showSearchResults
@@ -164,10 +162,6 @@ struct RootView: View {
             mapLocation.start()
             pairing.refresh()
 
-            await refreshMapCoordinateSystem(
-                recenterAfterChange: false
-            )
-
             if !pairing.hasPairingFile {
                 try? await Task.sleep(nanoseconds: 350_000_000)
                 showSetup = true
@@ -207,12 +201,8 @@ struct RootView: View {
             ensureControlSheetPresented()
             mapTrackingMode = .free
 
-            Task {
-                await refreshMapCoordinateSystem(
-                    recenterAfterChange: spoofing
-                )
-
-                if wasSpoofing && !spoofing {
+            if wasSpoofing && !spoofing {
+                Task {
                     await recenterAfterRealLocationRestore()
                 }
             }
@@ -244,9 +234,6 @@ struct RootView: View {
                 )
 
                 Task {
-                    await refreshMapCoordinateSystem(
-                        recenterAfterChange: false
-                    )
                     await consumePendingImport()
                 }
             }
@@ -267,9 +254,7 @@ struct RootView: View {
                    ) {
                     Marker(
                         session.selectedName,
-                        coordinate: mapDisplayCoordinate(
-                            fromWGS84: selected
-                        )
+                        coordinate: selected
                     )
                     .tint(.blue)
                 }
@@ -1410,14 +1395,10 @@ struct RootView: View {
             ) {
                 mapTrackingMode = .centered
 
-                let displayCoordinate =
-                    mapDisplayCoordinate(
-                        fromWGS84: real
-                    )
                 let camera = liveCamera
                 let fallback = MapCameraPosition.camera(
                     MapCamera(
-                        centerCoordinate: displayCoordinate,
+                        centerCoordinate: real,
                         distance: camera?.distance ?? 1_200,
                         heading: 0,
                         pitch: camera?.pitch ?? 0
@@ -1478,14 +1459,11 @@ struct RootView: View {
         let fallback: MapCameraPosition
 
         if let fallbackCoordinate {
-            let displayCoordinate = mapDisplayCoordinate(
-                fromWGS84: fallbackCoordinate
-            )
             let camera = liveCamera
 
             fallback = .camera(
                 MapCamera(
-                    centerCoordinate: displayCoordinate,
+                    centerCoordinate: fallbackCoordinate,
                     distance: camera?.distance ?? 1_200,
                     heading:
                         followsHeading
@@ -1699,10 +1677,6 @@ struct RootView: View {
     private func selectMapPoint(
         _ coordinate: CLLocationCoordinate2D
     ) {
-        // MapKit may expose GCJ-02 coordinates on domestic Apple Maps while
-        // the DVT location-simulation service expects WGS-84. Convert exactly
-        // once at the map input boundary so the injected location lands on the
-        // point the user actually tapped.
         selectMapCoordinate(
             coordinate,
             name: "地图选点",
@@ -1715,10 +1689,10 @@ struct RootView: View {
         name: String,
         moveCameraAfterSelection: Bool = true
     ) {
-        let canonical = MapCoordinateConverter.mapToWGS84(
-            coordinate,
-            system: mapCoordinateSystem
-        )
+        let canonical =
+            CoordinatePipeline.selectedFromMapKit(
+                coordinate
+            )
 
         session.select(
             canonical,
@@ -1733,58 +1707,10 @@ struct RootView: View {
     private func selectResolvedLocation(
         _ result: ResolvedLocationInput
     ) {
-        switch result.coordinateSpace {
-        case .wgs84:
-            select(
-                result.coordinate,
-                name: result.name
-            )
-
-        case .mapKit:
-            selectMapCoordinate(
-                result.coordinate,
-                name: result.name
-            )
-        }
-    }
-
-    private func mapDisplayCoordinate(
-        fromWGS84 coordinate: CLLocationCoordinate2D
-    ) -> CLLocationCoordinate2D {
-        MapCoordinateConverter.wgs84ToMap(
-            coordinate,
-            system: mapCoordinateSystem
+        selectMapCoordinate(
+            result.coordinate,
+            name: result.name
         )
-    }
-
-    @MainActor
-    private func refreshMapCoordinateSystem(
-        recenterAfterChange: Bool
-    ) async {
-        let detected =
-            await MapCoordinateConverter
-                .detectMapCoordinateSystem()
-
-        guard detected != mapCoordinateSystem else {
-            return
-        }
-
-        mapCoordinateSystem = detected
-
-        guard recenterAfterChange else {
-            return
-        }
-
-        if let coordinate =
-            session.simulatedCoordinate
-            ?? session.selectedCoordinate
-            ?? mapLocation.coordinate {
-            moveCamera(
-                to: coordinate,
-                latitudeDelta: 0.014,
-                preserveView: true
-            )
-        }
     }
 
     private func saveFavorite() {
@@ -1840,9 +1766,7 @@ struct RootView: View {
         let update = {
             position = .camera(
                 MapCamera(
-                    centerCoordinate: mapDisplayCoordinate(
-                        fromWGS84: coordinate
-                    ),
+                    centerCoordinate: coordinate,
                     distance: targetDistance,
                     heading: targetHeading,
                     pitch: targetPitch
@@ -1887,9 +1811,7 @@ struct RootView: View {
         }
 
         search.setSearchContext(
-            center: mapDisplayCoordinate(
-                fromWGS84: anchor
-            )
+            center: anchor
         )
     }
 
