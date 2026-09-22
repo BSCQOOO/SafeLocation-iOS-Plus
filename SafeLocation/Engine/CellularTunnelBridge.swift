@@ -29,10 +29,10 @@ final class CellularTunnelBridge: ObservableObject {
             case .idle: return "空闲"
             case .enablingVPN: return "正在启动 LocalDevVPN"
             case .waitingVPN: return "等待 Tunnel 就绪"
-            case .disablingCellular: return "正在临时关闭蜂窝数据"
+            case .disablingCellular: return "正在开启飞行模式"
             case .settlingRoute: return "等待本机路由稳定"
             case .creatingDeveloperTunnel: return "正在建立 Developer Tunnel"
-            case .enablingCellular: return "正在恢复蜂窝数据"
+            case .enablingCellular: return "正在关闭飞行模式"
             case .ready: return "纯蜂窝链路已完成"
             case .failed: return "纯蜂窝链路失败"
             }
@@ -52,15 +52,28 @@ final class CellularTunnelBridge: ObservableObject {
     private let monitorQueue = DispatchQueue(label: "com.safelocation.cellular-path")
 
     var isCellularOnly: Bool {
-        networkKind == .cellular || Self.interfaceSnapshotIsCellularOnly()
+        let snapshot = Self.interfaceSnapshot()
+        return networkKind == .cellular || (snapshot.hasCellular && !snapshot.hasWiFi)
+    }
+
+    /// Best-effort physical-interface check used only to recover when Shortcuts
+    /// did complete the Airplane Mode transition but its x-callback was lost.
+    var hasActiveCellularInterface: Bool {
+        Self.interfaceSnapshot().hasCellular
     }
 
     var turnOffShortcutName: String {
-        Self.shortcutName(for: Self.turnOffShortcutKey, fallback: "TurnOffData")
+        Self.shortcutName(
+            for: Self.turnOffShortcutKey,
+            fallback: "SafeLocation Airplane On"
+        )
     }
 
     var turnOnShortcutName: String {
-        Self.shortcutName(for: Self.turnOnShortcutKey, fallback: "TurnOnData")
+        Self.shortcutName(
+            for: Self.turnOnShortcutKey,
+            fallback: "SafeLocation Airplane Off"
+        )
     }
 
     private init() {
@@ -123,7 +136,22 @@ final class CellularTunnelBridge: ObservableObject {
     }
 
     @discardableResult
-    func runTurnOffDataShortcut() -> Bool {
+    func openShortcutCreator() -> Bool {
+        guard let url = URL(string: "shortcuts://create-shortcut") else {
+            return false
+        }
+
+        UIApplication.shared.open(url, options: [:]) { [weak self] opened in
+            guard !opened else { return }
+            Task { @MainActor in
+                self?.recordFailure("无法打开系统“快捷指令”编辑器。")
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    func runAirplaneOnShortcut() -> Bool {
         markStage(.disablingCellular)
         return runShortcut(
             named: turnOffShortcutName,
@@ -133,7 +161,7 @@ final class CellularTunnelBridge: ObservableObject {
     }
 
     @discardableResult
-    func runTurnOnDataShortcut() -> Bool {
+    func runAirplaneOffShortcut() -> Bool {
         markStage(.enablingCellular)
         return runShortcut(
             named: turnOnShortcutName,
@@ -142,7 +170,11 @@ final class CellularTunnelBridge: ObservableObject {
         )
     }
 
-    private func runShortcut(named name: String, phase: String, successURL: String) -> Bool {
+    private func runShortcut(
+        named name: String,
+        phase: String,
+        successURL: String
+    ) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             recordFailure("快捷指令名称为空。")
@@ -155,7 +187,9 @@ final class CellularTunnelBridge: ObservableObject {
             return false
         }
 
-        let failureURL = "safelocation://cellular-shortcut-error?phase=\(phase)"
+        let failureURL =
+            "safelocation://cellular-shortcut-error?phase=\(phase)"
+
         var components = URLComponents()
         components.scheme = "shortcuts"
         components.host = "x-callback-url"
@@ -181,10 +215,13 @@ final class CellularTunnelBridge: ObservableObject {
         return true
     }
 
-    private static func interfaceSnapshotIsCellularOnly() -> Bool {
+    private static func interfaceSnapshot() -> (
+        hasWiFi: Bool,
+        hasCellular: Bool
+    ) {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let first = ifaddr else {
-            return false
+            return (false, false)
         }
         defer { freeifaddrs(ifaddr) }
 
@@ -214,7 +251,7 @@ final class CellularTunnelBridge: ObservableObject {
             }
         }
 
-        return hasCellular && !hasWiFi
+        return (hasWiFi, hasCellular)
     }
 
     private static func classify(_ path: NWPath) -> NetworkKind {
@@ -224,15 +261,25 @@ final class CellularTunnelBridge: ObservableObject {
         return .other
     }
 
-    private static func shortcutName(for key: String, fallback: String) -> String {
+    private static func shortcutName(
+        for key: String,
+        fallback: String
+    ) -> String {
         let value = UserDefaults.standard.string(forKey: key)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let value, !value.isEmpty else { return fallback }
+
+        guard let value, !value.isEmpty else {
+            return fallback
+        }
         return value
     }
 
-    private static func storeShortcutName(_ value: String, key: String) {
+    private static func storeShortcutName(
+        _ value: String,
+        key: String
+    ) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
         if trimmed.isEmpty {
             UserDefaults.standard.removeObject(forKey: key)
         } else {
