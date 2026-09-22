@@ -13,14 +13,14 @@ struct ProfilesView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    sectionTitle("快捷城市", subtitle: "选择后回到地图，再点击 Teleport")
+                    sectionTitle("快捷城市")
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(LocationProfileStore.builtIns) { profile in
                             profileCard(profile, custom: false)
                         }
                     }
 
-                    sectionTitle("我的位置方案", subtitle: "可保存移动方式和自动恢复时间")
+                    sectionTitle("我的位置方案")
                     if session.customProfiles.isEmpty {
                         ContentUnavailableView(
                             "还没有自定义方案",
@@ -57,11 +57,9 @@ struct ProfilesView: View {
         }
     }
 
-    private func sectionTitle(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.title3.bold())
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
-        }
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.title3.bold())
     }
 
     private func profileCard(_ profile: LocationProfile, custom: Bool) -> some View {
