@@ -1,9 +1,18 @@
 name: Build Safe Location unsigned IPA
 
-# macOS runners consume the account's limited Actions minutes quickly.
-# Build only when explicitly requested from the Actions page.
+# Public repositories can use standard GitHub-hosted runners without consuming
+# the private-repository Actions minute allowance.
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, feature/cellular-tunnel-experiment ]
+    paths:
+      - "SafeLocation/**"
+      - "Scripts/**"
+      - "Tests/**"
+      - "project.yml"
+      - ".github/workflows/build-unsigned-ipa.yml"
+      - ".github/trigger-build"
 
 permissions:
   contents: read
