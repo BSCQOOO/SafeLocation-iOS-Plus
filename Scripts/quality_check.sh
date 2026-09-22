@@ -29,6 +29,7 @@ echo "[3/8] Check required files"
 required=(
   SafeLocation/App/SafeLocationApp.swift
   SafeLocation/Engine/LocationEngine.swift
+  SafeLocation/Engine/CellularTunnelBridge.swift
   SafeLocation/Engine/PairOnDeviceService.swift
   SafeLocation/Engine/SpoofController.swift
   SafeLocation/Features/RootView.swift
@@ -141,4 +142,9 @@ grep -q 'isRestoringRealLocation' SafeLocation/Engine/SpoofController.swift
 grep -q 'static func restore(' SafeLocation/Engine/LocationEngine.swift
 grep -q 'recenterAfterRealLocationRestore' SafeLocation/Features/RootView.swift
 grep -q 'pairingPath: pairing.pairingPath' SafeLocation/Features/RootView.swift
+grep -q 'x-callback-url' SafeLocation/Engine/CellularTunnelBridge.swift
+grep -q 'runTurnOffDataShortcut' SafeLocation/Engine/CellularTunnelBridge.swift
+grep -q 'handleCellularDataOffCallback' SafeLocation/Engine/SpoofController.swift
+grep -q 'cellular-off-ready' SafeLocation/App/SafeLocationApp.swift
+grep -q '<string>shortcuts</string>' SafeLocation/Resources/Info.plist
 echo "Quality checks passed."

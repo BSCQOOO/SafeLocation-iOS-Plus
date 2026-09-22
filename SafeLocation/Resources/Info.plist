@@ -36,7 +36,10 @@
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
     <key>LSApplicationQueriesSchemes</key>
-    <array><string>localdevvpn</string></array>
+    <array>
+        <string>localdevvpn</string>
+        <string>shortcuts</string>
+    </array>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

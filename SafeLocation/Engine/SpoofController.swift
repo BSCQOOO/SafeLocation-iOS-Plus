@@ -45,6 +45,7 @@ final class SpoofController: ObservableObject {
     @Published private(set) var autoRestoreDeadline: Date?
     @Published private(set) var autoRestoreRemaining: TimeInterval?
     @Published private(set) var pendingAutoRestoreMinutes: Int?
+    @Published private(set) var cellularFlowPending = false
 
     private let keeper = BackgroundLocationKeeper()
     private let audio = SilentAudioKeepAlive()
@@ -55,6 +56,15 @@ final class SpoofController: ObservableObject {
     private var lastPairingPath: String?
     private let deadlineKey = "safeLocation.autoRestoreDeadline"
     private let notificationID = "safeLocation.autoRestore"
+
+    private struct PendingTeleport {
+        let coordinate: CLLocationCoordinate2D
+        let autoRestoreMinutes: Int?
+        let requiresCellularWorkaround: Bool
+    }
+
+    private var pendingTeleport: PendingTeleport?
+    private var cellularFlowGeneration = 0
 
     init() {
         if let d = UserDefaults.standard.object(forKey: deadlineKey) as? Date, d > .now {
@@ -91,12 +101,118 @@ final class SpoofController: ObservableObject {
     }
 
     func teleport(pairing: PairingStore) {
-        guard ready(pairing), let coordinate = selectedCoordinate else { if selectedCoordinate == nil { fail("请先选择位置。") }; return }
+        guard pairing.hasPairingFile else {
+            fail("请先完成 iOS 27 本机配对。")
+            return
+        }
+        guard let coordinate = selectedCoordinate else {
+            fail("请先选择位置。")
+            return
+        }
+
         stopMovementOnly()
-        if apply(coordinate, pairing: pairing, recent: true, state: .active, haptic: true),
-           let minutes = pendingAutoRestoreMinutes, minutes > 0 {
-            scheduleAutoRestore(minutes: minutes)
-            pendingAutoRestoreMinutes = nil
+
+        // Keep the normal fast path. A healthy live DVT session can update the
+        // coordinate without touching the physical network state.
+        if LocationEngine.isSessionActive,
+           apply(coordinate, pairing: pairing, recent: true, state: .active, haptic: true) {
+            finishTeleportAutoRestore(minutes: pendingAutoRestoreMinutes)
+            return
+        }
+
+        let bridge = CellularTunnelBridge.shared
+        pendingTeleport = PendingTeleport(
+            coordinate: coordinate,
+            autoRestoreMinutes: pendingAutoRestoreMinutes,
+            requiresCellularWorkaround: bridge.isCellularOnly
+        )
+        cellularFlowPending = true
+        status = .connecting
+        lastError = nil
+        beginPendingTeleportTransport(pairing: pairing)
+    }
+
+    func handleLocalDevVPNCallback(pairing: PairingStore) {
+        guard pendingTeleport != nil else { return }
+
+        let generation = bumpCellularFlowGeneration()
+        CellularTunnelBridge.shared.markStage(.waitingVPN)
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            for _ in 0..<30 {
+                guard generation == self.cellularFlowGeneration,
+                      self.pendingTeleport != nil else { return }
+
+                if LocalDevVPN.isConnected {
+                    self.beginPendingTeleportTransport(pairing: pairing)
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+
+            guard generation == self.cellularFlowGeneration else { return }
+            self.abortPendingCellularFlow(
+                "LocalDevVPN 已返回，但 6 秒内没有检测到 10.7.x.x utun。"
+            )
+        }
+    }
+
+    func handleCellularDataOffCallback(pairing: PairingStore) {
+        guard pendingTeleport?.requiresCellularWorkaround == true else { return }
+
+        let generation = bumpCellularFlowGeneration()
+        CellularTunnelBridge.shared.markStage(.settlingRoute)
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 900_000_000)
+
+            guard generation == self.cellularFlowGeneration,
+                  self.pendingTeleport != nil else { return }
+
+            guard LocalDevVPN.isConnected else {
+                let message = "蜂窝数据关闭后 LocalDevVPN 的 utun 消失，无法继续 Developer Tunnel。"
+                self.abortPendingCellularFlow(message)
+                _ = CellularTunnelBridge.shared.runTurnOnDataShortcut()
+                return
+            }
+
+            CellularTunnelBridge.shared.markStage(.creatingDeveloperTunnel)
+            self.performPendingTeleport(
+                pairing: pairing,
+                restoreCellularAfter: true
+            )
+        }
+    }
+
+    func handleCellularDataOnCallback() {
+        if isSpoofing {
+            CellularTunnelBridge.shared.markReady()
+        } else {
+            CellularTunnelBridge.shared.markIdle()
+        }
+    }
+
+    func handleCellularShortcutFailure(_ url: URL) {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let phase = items.first(where: { $0.name == "phase" })?.value ?? "unknown"
+        let detail = items.first(where: { $0.name == "errorMessage" })?.value
+            ?? "快捷指令被取消、缺失或运行失败。"
+
+        if phase == "off" {
+            abortPendingCellularFlow("纯蜂窝准备失败：\(detail)")
+            return
+        }
+
+        let message = "蜂窝数据未能自动恢复：\(detail)"
+        CellularTunnelBridge.shared.recordFailure(message)
+        if isSpoofing {
+            lastError = "模拟定位已经生效，但\(message)"
+        } else {
+            fail(message)
         }
     }
 
@@ -306,6 +422,121 @@ final class SpoofController: ObservableObject {
         guard !isRestoringRealLocation else { return }
         guard let c = simulatedCoordinate, pairing.hasPairingFile, LocalDevVPN.isConnected, !LocationEngine.isSessionActive else { return }
         status = .reconnecting; _ = apply(c, pairing: pairing, recent: false, state: .active, haptic: false)
+    }
+
+    private func beginPendingTeleportTransport(pairing: PairingStore) {
+        guard let pendingTeleport else { return }
+        let bridge = CellularTunnelBridge.shared
+
+        if !LocalDevVPN.isConnected {
+            guard bridge.launchLocalDevVPN() else {
+                abortPendingCellularFlow(
+                    bridge.lastError ?? "无法启动 LocalDevVPN。"
+                )
+                return
+            }
+            scheduleCellularFlowTimeout(
+                seconds: 15,
+                message: "等待 LocalDevVPN 回调超时。"
+            )
+            return
+        }
+
+        if pendingTeleport.requiresCellularWorkaround {
+            guard bridge.runTurnOffDataShortcut() else {
+                abortPendingCellularFlow(
+                    bridge.lastError ?? "无法运行关闭蜂窝数据的快捷指令。"
+                )
+                return
+            }
+            scheduleCellularFlowTimeout(
+                seconds: 20,
+                message: "等待关闭蜂窝数据的快捷指令回调超时。"
+            )
+            return
+        }
+
+        bridge.markStage(.creatingDeveloperTunnel)
+        performPendingTeleport(
+            pairing: pairing,
+            restoreCellularAfter: false
+        )
+    }
+
+    private func performPendingTeleport(
+        pairing: PairingStore,
+        restoreCellularAfter: Bool
+    ) {
+        guard let pending = pendingTeleport else { return }
+
+        let success = apply(
+            pending.coordinate,
+            pairing: pairing,
+            recent: true,
+            state: .active,
+            haptic: true
+        )
+
+        if success {
+            finishTeleportAutoRestore(minutes: pending.autoRestoreMinutes)
+        }
+
+        pendingTeleport = nil
+        cellularFlowPending = false
+        _ = bumpCellularFlowGeneration()
+
+        if restoreCellularAfter {
+            let originalError = lastError
+            if !CellularTunnelBridge.shared.runTurnOnDataShortcut() {
+                let warning = CellularTunnelBridge.shared.lastError
+                    ?? "无法运行恢复蜂窝数据的快捷指令。"
+                if success {
+                    lastError = "模拟定位已经生效，但\(warning)"
+                } else {
+                    lastError = originalError ?? warning
+                }
+            }
+        } else if success {
+            CellularTunnelBridge.shared.markReady()
+        } else {
+            CellularTunnelBridge.shared.recordFailure(
+                lastError ?? "Developer Tunnel 建立失败。"
+            )
+        }
+    }
+
+    private func finishTeleportAutoRestore(minutes: Int?) {
+        if let minutes, minutes > 0 {
+            scheduleAutoRestore(minutes: minutes)
+            pendingAutoRestoreMinutes = nil
+        }
+    }
+
+    private func abortPendingCellularFlow(_ message: String) {
+        pendingTeleport = nil
+        cellularFlowPending = false
+        _ = bumpCellularFlowGeneration()
+        CellularTunnelBridge.shared.recordFailure(message)
+        fail(message)
+    }
+
+    private func bumpCellularFlowGeneration() -> Int {
+        cellularFlowGeneration += 1
+        return cellularFlowGeneration
+    }
+
+    private func scheduleCellularFlowTimeout(
+        seconds: UInt64,
+        message: String
+    ) {
+        let generation = bumpCellularFlowGeneration()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard generation == self.cellularFlowGeneration,
+                  self.pendingTeleport != nil else { return }
+            self.abortPendingCellularFlow(message)
+        }
     }
 
     private func ready(_ pairing: PairingStore) -> Bool {

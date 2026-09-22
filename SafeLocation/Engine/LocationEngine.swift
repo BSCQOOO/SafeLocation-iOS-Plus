@@ -9,7 +9,7 @@ enum LocationEngineError: LocalizedError {
         switch self {
         case .invalidIP: return "Tunnel IP 无效，请检查设置。"
         case .pairingRead: return "无法读取 RPPairing 文件，请重新配对。"
-        case .tunnelCreate: return "无法建立开发者 Tunnel，请确认 LocalDevVPN 已连接。"
+        case .tunnelCreate: return "tunnel_create_rppairing 失败：utun 已存在时请检查 10.7.0.1 peer 路由与当前网络状态。"
         case .remoteServer: return "Tunnel 已连接，但 RemoteXPC 握手失败。"
         case .simulationCreate: return "无法打开 Apple LocationSimulation 服务。"
         case .locationSet: return "设置模拟定位失败。"

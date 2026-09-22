@@ -4,6 +4,7 @@ struct DiagnosticsView: View {
     @EnvironmentObject private var session: SpoofController
     @EnvironmentObject private var pairing: PairingStore
     @EnvironmentObject private var pairService: PairOnDeviceService
+    @ObservedObject private var cellularBridge = CellularTunnelBridge.shared
     @State private var tunnelIP = TunnelConfig.targetIP
 
     var body: some View {
@@ -13,6 +14,26 @@ struct DiagnosticsView: View {
                 diagnosticRow("LocalDevVPN", ok: LocalDevVPN.isConnected, detail: LocalDevVPN.isConnected ? "已连接 · \(LocalDevVPN.detectedInterfaceIP ?? "已检测")" : "未连接")
                 diagnosticRow("DVT 会话", ok: LocationEngine.isSessionActive, detail: LocationEngine.isSessionActive ? "活动" : "未建立")
                 diagnosticRow("模拟状态", ok: session.isSpoofing, detail: session.status.title)
+            }
+
+            Section("Developer Tunnel Diagnostics") {
+                LabeledContent("当前网络", value: cellularBridge.networkKind.rawValue)
+                LabeledContent("蜂窝桥接阶段", value: cellularBridge.stage.title)
+                LabeledContent("等待中的 Teleport", value: session.cellularFlowPending ? "是" : "否")
+                LabeledContent("TurnOffData", value: cellularBridge.turnOffShortcutName)
+                LabeledContent("TurnOnData", value: cellularBridge.turnOnShortcutName)
+                if let error = cellularBridge.lastError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if let error = session.lastError {
+                    LabeledContent("最后一次 DVT 错误") {
+                        Text(error)
+                            .font(.caption)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
             }
 
             Section("Tunnel") {
@@ -35,7 +56,7 @@ struct DiagnosticsView: View {
             }
 
             Section("说明") {
-                Text("这里检查的是 Safe Location 自身依赖。系统的 Developer Mode 没有公开 API 可以可靠直接读取；如果配对或 DVT 服务失败，请先确认开发者模式仍然开启。")
+                Text("纯蜂窝实验会在 Developer Tunnel 建链前临时关闭蜂窝数据，建链完成后再自动恢复。系统的 Developer Mode 没有公开 API 可以可靠直接读取；如果配对或 DVT 服务失败，请先确认开发者模式仍然开启。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

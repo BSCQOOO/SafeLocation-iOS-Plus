@@ -33,6 +33,20 @@ struct SafeLocationApp: App {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 
         switch command {
+        case "":
+            // LocalDevVPN returns to safelocation:// after requesting the
+            // tunnel. Resume only when a Teleport is actually pending.
+            session.handleLocalDevVPNCallback(pairing: pairing)
+
+        case "cellular-off-ready":
+            session.handleCellularDataOffCallback(pairing: pairing)
+
+        case "cellular-on-ready":
+            session.handleCellularDataOnCallback()
+
+        case "cellular-shortcut-error":
+            session.handleCellularShortcutFailure(url)
+
         case "restore", "clear", "panic":
             session.emergencyRestore()
 

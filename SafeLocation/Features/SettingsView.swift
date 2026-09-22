@@ -5,8 +5,11 @@ struct SettingsView: View {
     @EnvironmentObject private var pairing: PairingStore
     @EnvironmentObject private var pairService: PairOnDeviceService
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var cellularBridge = CellularTunnelBridge.shared
 
     @State private var tunnelIP = TunnelConfig.targetIP
+    @State private var turnOffShortcut = CellularTunnelBridge.shared.turnOffShortcutName
+    @State private var turnOnShortcut = CellularTunnelBridge.shared.turnOnShortcutName
     @State private var showSetup = false
     @State private var confirmRemovePairing = false
 
@@ -45,13 +48,33 @@ struct SettingsView: View {
                     Button("重新运行首次设置") { showSetup = true }
                 }
 
+                Section("纯蜂窝实验") {
+                    LabeledContent("当前网络", value: cellularBridge.networkKind.rawValue)
+                    LabeledContent("桥接状态", value: cellularBridge.stage.title)
+                    TextField("关闭蜂窝快捷指令", text: $turnOffShortcut)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("恢复蜂窝快捷指令", text: $turnOnShortcut)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("保存快捷指令名称") {
+                        cellularBridge.setShortcutNames(
+                            turnOff: turnOffShortcut,
+                            turnOn: turnOnShortcut
+                        )
+                    }
+                    Text("默认使用 TurnOffData / TurnOnData。前者只需要“设置蜂窝数据：关闭”，后者只需要“设置蜂窝数据：打开”。Safe Location 会使用 Shortcuts x-callback 自动返回并继续 DVT 建链。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("移动默认值") {
                     Picker("默认速度", selection: $session.travelMode) {
                         ForEach(SpoofController.TravelMode.allCases) { mode in
                             Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
                         }
                     }
-                    LabeledContent("自定义位置方案", value: "(session.customProfiles.count) 个")
+                    LabeledContent("自定义位置方案", value: "\(session.customProfiles.count) 个")
                 }
 
                 Section("导入与快捷调用") {
