@@ -152,8 +152,11 @@ grep -q 'nanoseconds: 220_000_000' SafeLocation/Features/RootView.swift
 grep -q 'setSearchContext' SafeLocation/Features/SearchController.swift
 grep -q 'resolveAppleMapsStyleQuery' SafeLocation/Features/SearchController.swift
 grep -q 'regionPriority = .required' SafeLocation/Features/SearchController.swift
-grep -q 'nearbyCompleter' SafeLocation/Features/SearchController.swift
-grep -q 'broaderCompleter' SafeLocation/Features/SearchController.swift
+grep -q 'pointInMainlandPolygon' SafeLocation/Support/MapCoordinateConverter.swift
+grep -q '(53.0, 134.8)' SafeLocation/Support/MapCoordinateConverter.swift
+grep -q 'struct LocalSearchResult' SafeLocation/Features/SearchController.swift
+grep -q 'scheduleSuggestionSearch' SafeLocation/Features/SearchController.swift
+grep -q 'search.select(result)' SafeLocation/Features/RootView.swift
 grep -q 'refreshSearchCenter' SafeLocation/Features/RootView.swift
 ! grep -q 'private var connectionSection' SafeLocation/Features/RootView.swift
 grep -q 'retention-days: 7' .github/workflows/build-unsigned-ipa.yml
