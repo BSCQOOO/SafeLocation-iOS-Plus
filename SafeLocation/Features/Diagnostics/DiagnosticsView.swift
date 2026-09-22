@@ -20,8 +20,8 @@ struct DiagnosticsView: View {
                 LabeledContent("当前网络", value: cellularBridge.networkKind.rawValue)
                 LabeledContent("蜂窝桥接阶段", value: cellularBridge.stage.title)
                 LabeledContent("等待中的 Teleport", value: session.cellularFlowPending ? "是" : "否")
-                LabeledContent("TurnOffData", value: cellularBridge.turnOffShortcutName)
-                LabeledContent("TurnOnData", value: cellularBridge.turnOnShortcutName)
+                LabeledContent("开启飞行模式", value: cellularBridge.turnOffShortcutName)
+                LabeledContent("关闭飞行模式", value: cellularBridge.turnOnShortcutName)
                 if let error = cellularBridge.lastError {
                     Text(error)
                         .font(.caption)
@@ -55,11 +55,6 @@ struct DiagnosticsView: View {
                 Button("刷新配对状态") { pairing.refresh() }
             }
 
-            Section("说明") {
-                Text("纯蜂窝实验会在 Developer Tunnel 建链前临时关闭蜂窝数据，建链完成后再自动恢复。系统的 Developer Mode 没有公开 API 可以可靠直接读取；如果配对或 DVT 服务失败，请先确认开发者模式仍然开启。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .navigationTitle("诊断")
         .navigationBarTitleDisplayMode(.inline)
