@@ -2,297 +2,250 @@ import CoreLocation
 import Foundation
 import MapKit
 
-struct SearchSuggestion: Identifiable {
-    enum Scope {
-        case nearby
-        case broader
+struct LocalSearchResult: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let coordinate: CLLocationCoordinate2D
+
+    init(item: MKMapItem) {
+        let coordinate = item.placemark.coordinate
+        let title = item.name?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        self.title =
+            (title?.isEmpty == false)
+            ? title!
+            : "地点"
+
+        let address = item.placemark.title?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
+
+        self.subtitle =
+            address == self.title
+            ? ""
+            : address
+
+        self.coordinate = coordinate
+        self.id = String(
+            format: "%.6f|%.6f|%@",
+            coordinate.latitude,
+            coordinate.longitude,
+            self.title
+        )
     }
-
-    let completion: MKLocalSearchCompletion
-    let scope: Scope
-
-    var id: String {
-        [
-            scope == .nearby ? "nearby" : "broader",
-            completion.title,
-            completion.subtitle
-        ].joined(separator: "|")
-    }
-
-    var title: String { completion.title }
-    var subtitle: String { completion.subtitle }
 }
 
 @MainActor
-final class SearchController: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+final class SearchController: NSObject, ObservableObject {
     @Published var query: String = "" {
         didSet {
-            updateQuery()
+            scheduleSuggestionSearch()
         }
     }
 
-    @Published private(set) var results: [SearchSuggestion] = []
-
-    private let nearbyCompleter = MKLocalSearchCompleter()
-    private let broaderCompleter = MKLocalSearchCompleter()
-
-    private var nearbyResults: [MKLocalSearchCompletion] = []
-    private var broaderResults: [MKLocalSearchCompletion] = []
+    @Published private(set) var results: [LocalSearchResult] = []
+    @Published private(set) var isSearching = false
 
     private var preferredCoordinate: CLLocationCoordinate2D?
-    private var nearbyRadius: CLLocationDistance = 20_000
-
-    override init() {
-        super.init()
-
-        configure(
-            nearbyCompleter,
-            priority: .required
-        )
-        configure(
-            broaderCompleter,
-            priority: .default
-        )
-    }
+    private var nearbyRadius: CLLocationDistance = 18_000
+    private var suggestionTask: Task<Void, Never>?
+    private var generation = 0
 
     func setSearchContext(
         center: CLLocationCoordinate2D?,
         visibleRadius: CLLocationDistance? = nil
     ) {
+        let oldCenter = preferredCoordinate
+        let oldRadius = nearbyRadius
+
         preferredCoordinate = center
 
         if let visibleRadius {
             nearbyRadius = min(
-                35_000,
-                max(6_000, visibleRadius)
+                30_000,
+                max(5_000, visibleRadius)
             )
         }
 
-        guard let center else {
-            nearbyCompleter.regionPriority = .default
-            broaderCompleter.regionPriority = .default
-            return
+        let movedEnough: Bool
+
+        if let oldCenter, let center {
+            movedEnough =
+                CLLocation(
+                    latitude: oldCenter.latitude,
+                    longitude: oldCenter.longitude
+                )
+                .distance(
+                    from: CLLocation(
+                        latitude: center.latitude,
+                        longitude: center.longitude
+                    )
+                ) > max(250, nearbyRadius * 0.08)
+        } else {
+            movedEnough = oldCenter != nil || center != nil
         }
 
-        nearbyCompleter.region = region(
-            around: center,
-            radius: nearbyRadius
-        )
-        nearbyCompleter.regionPriority = .required
+        let radiusChanged =
+            abs(oldRadius - nearbyRadius)
+                > max(400, nearbyRadius * 0.12)
 
-        broaderCompleter.region = region(
-            around: center,
-            radius: max(120_000, nearbyRadius * 5)
-        )
-        broaderCompleter.regionPriority = .default
-
-        restartCompletersIfNeeded()
-    }
-
-    nonisolated func completerDidUpdateResults(
-        _ completer: MKLocalSearchCompleter
-    ) {
-        let incoming = Array(completer.results.prefix(12))
-
-        Task { @MainActor in
-            if completer === self.nearbyCompleter {
-                self.nearbyResults = incoming
-            } else if completer === self.broaderCompleter {
-                self.broaderResults = incoming
-            }
-
-            self.publishMergedResults()
+        if movedEnough || radiusChanged {
+            scheduleSuggestionSearch()
         }
     }
 
-    nonisolated func completer(
-        _ completer: MKLocalSearchCompleter,
-        didFailWithError error: Error
-    ) {
-        Task { @MainActor in
-            if completer === self.nearbyCompleter {
-                self.nearbyResults = []
-            } else if completer === self.broaderCompleter {
-                self.broaderResults = []
-            }
-
-            self.publishMergedResults()
-        }
-    }
-
-    func resolve(
-        _ suggestion: SearchSuggestion
-    ) async throws -> (
+    func select(
+        _ result: LocalSearchResult
+    ) -> (
         coordinate: CLLocationCoordinate2D,
         name: String
     ) {
-        if suggestion.scope == .nearby,
-           let preferredCoordinate,
-           let item = try await search(
-                completion: suggestion.completion,
-                center: preferredCoordinate,
-                radius: nearbyRadius,
-                priority: .required
-           ) {
-            return resolved(item, fallback: suggestion.title)
-        }
-
-        let request = MKLocalSearch.Request(
-            completion: suggestion.completion
+        (
+            result.coordinate,
+            result.title
         )
-
-        if let preferredCoordinate {
-            request.region = region(
-                around: preferredCoordinate,
-                radius: max(120_000, nearbyRadius * 5)
-            )
-            request.regionPriority = .default
-        }
-
-        let response = try await MKLocalSearch(
-            request: request
-        ).start()
-
-        guard let item = response.mapItems.first else {
-            throw SearchError.noResult
-        }
-
-        return resolved(item, fallback: suggestion.title)
     }
 
     func resolveAppleMapsStyleQuery(
         _ rawQuery: String
-    ) async throws -> (
-        coordinate: CLLocationCoordinate2D,
-        name: String
-    )? {
+    ) async throws -> LocalSearchResult? {
         let text = rawQuery.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
         guard !text.isEmpty else { return nil }
 
-        guard let preferredCoordinate else {
-            return try await broadSearch(text)
-        }
+        if let preferredCoordinate {
+            let nearby = try await localSearch(
+                text,
+                center: preferredCoordinate,
+                radius: nearbyRadius,
+                priority: .required
+            )
 
-        // 1. Search the visible/nearby area strictly. This keeps same-name
-        // businesses and POIs near the current map context above remote ones.
-        if let item = try await search(
-            query: text,
-            center: preferredCoordinate,
-            radius: nearbyRadius,
-            priority: .required
-        ) {
-            return resolved(item, fallback: text)
-        }
+            if let first = nearby.first {
+                return first
+            }
 
-        // 2. Match Apple Maps' progressive broadening: nearby city/metro area
-        // before falling all the way back to unrestricted results.
-        if let item = try await search(
-            query: text,
-            center: preferredCoordinate,
-            radius: 120_000,
-            priority: .required
-        ) {
-            return resolved(item, fallback: text)
-        }
+            let metro = try await localSearch(
+                text,
+                center: preferredCoordinate,
+                radius: 120_000,
+                priority: .required
+            )
 
-        // 3. Final fallback allows MapKit's server relevance model to return
-        // a remote well-known place when there truly is no useful local match.
-        return try await broadSearch(text)
-    }
-
-    private func configure(
-        _ completer: MKLocalSearchCompleter,
-        priority: MKLocalSearchRegionPriority
-    ) {
-        completer.delegate = self
-        completer.resultTypes = [
-            .address,
-            .pointOfInterest,
-            .query
-        ]
-        completer.regionPriority = priority
-    }
-
-    private func updateQuery() {
-        let trimmed = query.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        guard !trimmed.isEmpty else {
-            nearbyCompleter.cancel()
-            broaderCompleter.cancel()
-            nearbyCompleter.queryFragment = ""
-            broaderCompleter.queryFragment = ""
-            nearbyResults = []
-            broaderResults = []
-            results = []
-            return
-        }
-
-        nearbyCompleter.queryFragment = query
-        broaderCompleter.queryFragment = query
-    }
-
-    private func restartCompletersIfNeeded() {
-        let trimmed = query.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard !trimmed.isEmpty else { return }
-
-        nearbyCompleter.queryFragment = ""
-        broaderCompleter.queryFragment = ""
-        nearbyCompleter.queryFragment = query
-        broaderCompleter.queryFragment = query
-    }
-
-    private func publishMergedResults() {
-        var seen = Set<String>()
-        var merged: [SearchSuggestion] = []
-
-        func append(
-            _ completions: [MKLocalSearchCompletion],
-            scope: SearchSuggestion.Scope
-        ) {
-            for completion in completions {
-                let key = normalizedKey(
-                    title: completion.title,
-                    subtitle: completion.subtitle
-                )
-
-                guard seen.insert(key).inserted else {
-                    continue
-                }
-
-                merged.append(
-                    SearchSuggestion(
-                        completion: completion,
-                        scope: scope
-                    )
-                )
-
-                if merged.count >= 12 {
-                    return
-                }
+            if let first = metro.first {
+                return first
             }
         }
 
-        append(nearbyResults, scope: .nearby)
-
-        if merged.count < 12 {
-            append(broaderResults, scope: .broader)
-        }
-
-        results = merged
+        // Only an explicit submitted search may fall back globally. Live
+        // suggestions stay local so a Tokyo viewport never fills with China
+        // results just because the query language is Chinese.
+        return try await globalSearch(text).first
     }
 
-    private func search(
-        query: String,
+    private func scheduleSuggestionSearch() {
+        generation += 1
+        let currentGeneration = generation
+
+        suggestionTask?.cancel()
+
+        let text = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !text.isEmpty else {
+            results = []
+            isSearching = false
+            return
+        }
+
+        guard let center = preferredCoordinate else {
+            results = []
+            isSearching = false
+            return
+        }
+
+        suggestionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            try? await Task.sleep(
+                nanoseconds: 230_000_000
+            )
+
+            guard
+                !Task.isCancelled,
+                currentGeneration == self.generation
+            else {
+                return
+            }
+
+            self.isSearching = true
+            defer {
+                if currentGeneration == self.generation {
+                    self.isSearching = false
+                }
+            }
+
+            do {
+                let nearby = try await self.localSearch(
+                    text,
+                    center: center,
+                    radius: self.nearbyRadius,
+                    priority: .required
+                )
+
+                guard
+                    !Task.isCancelled,
+                    currentGeneration == self.generation
+                else {
+                    return
+                }
+
+                if nearby.count >= 8 {
+                    self.results = Array(nearby.prefix(12))
+                    return
+                }
+
+                let metro = try await self.localSearch(
+                    text,
+                    center: center,
+                    radius: 120_000,
+                    priority: .required
+                )
+
+                guard
+                    !Task.isCancelled,
+                    currentGeneration == self.generation
+                else {
+                    return
+                }
+
+                self.results = self.merge(
+                    nearby,
+                    metro,
+                    limit: 12
+                )
+            } catch {
+                guard currentGeneration == self.generation else {
+                    return
+                }
+
+                // Search suggestions are best-effort. Keep the UI clean instead
+                // of surfacing transient MapKit network errors while typing.
+                self.results = []
+            }
+        }
+    }
+
+    private func localSearch(
+        _ query: String,
         center: CLLocationCoordinate2D,
         radius: CLLocationDistance,
         priority: MKLocalSearchRegionPriority
-    ) async throws -> MKMapItem? {
+    ) async throws -> [LocalSearchResult] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         request.resultTypes = [
@@ -309,40 +262,20 @@ final class SearchController: NSObject, ObservableObject, MKLocalSearchCompleter
             request: request
         ).start()
 
-        // Preserve MapKit's semantic ordering. The previous implementation
-        // re-sorted everything by distance, which could promote a weak textual
-        // match over the result Apple considers more relevant.
-        return response.mapItems.first
+        return response.mapItems
+            .map(LocalSearchResult.init)
+            .filter {
+                contains(
+                    $0.coordinate,
+                    center: center,
+                    radius: radius * 1.12
+                )
+            }
     }
 
-    private func search(
-        completion: MKLocalSearchCompletion,
-        center: CLLocationCoordinate2D,
-        radius: CLLocationDistance,
-        priority: MKLocalSearchRegionPriority
-    ) async throws -> MKMapItem? {
-        let request = MKLocalSearch.Request(
-            completion: completion
-        )
-        request.region = region(
-            around: center,
-            radius: radius
-        )
-        request.regionPriority = priority
-
-        let response = try await MKLocalSearch(
-            request: request
-        ).start()
-
-        return response.mapItems.first
-    }
-
-    private func broadSearch(
+    private func globalSearch(
         _ query: String
-    ) async throws -> (
-        coordinate: CLLocationCoordinate2D,
-        name: String
-    )? {
+    ) async throws -> [LocalSearchResult] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         request.resultTypes = [
@@ -362,23 +295,52 @@ final class SearchController: NSObject, ObservableObject, MKLocalSearchCompleter
             request: request
         ).start()
 
-        guard let item = response.mapItems.first else {
-            return nil
-        }
-
-        return resolved(item, fallback: query)
+        return response.mapItems
+            .map(LocalSearchResult.init)
     }
 
-    private func resolved(
-        _ item: MKMapItem,
-        fallback: String
-    ) -> (
-        coordinate: CLLocationCoordinate2D,
-        name: String
-    ) {
-        (
-            item.placemark.coordinate,
-            item.name ?? fallback
+    private func merge(
+        _ first: [LocalSearchResult],
+        _ second: [LocalSearchResult],
+        limit: Int
+    ) -> [LocalSearchResult] {
+        var seen = Set<String>()
+        var output: [LocalSearchResult] = []
+
+        for item in first + second {
+            let key = normalizedKey(item)
+
+            guard seen.insert(key).inserted else {
+                continue
+            }
+
+            output.append(item)
+
+            if output.count >= limit {
+                break
+            }
+        }
+
+        return output
+    }
+
+    private func normalizedKey(
+        _ result: LocalSearchResult
+    ) -> String {
+        [
+            result.title,
+            result.subtitle,
+            String(format: "%.4f", result.coordinate.latitude),
+            String(format: "%.4f", result.coordinate.longitude)
+        ]
+        .joined(separator: "|")
+        .folding(
+            options: [
+                .caseInsensitive,
+                .diacriticInsensitive,
+                .widthInsensitive
+            ],
+            locale: .current
         )
     }
 
@@ -393,27 +355,21 @@ final class SearchController: NSObject, ObservableObject, MKLocalSearchCompleter
         )
     }
 
-    private func normalizedKey(
-        title: String,
-        subtitle: String
-    ) -> String {
-        (title + "|" + subtitle)
-            .folding(
-                options: [
-                    .caseInsensitive,
-                    .diacriticInsensitive,
-                    .widthInsensitive
-                ],
-                locale: .current
+    private func contains(
+        _ coordinate: CLLocationCoordinate2D,
+        center: CLLocationCoordinate2D,
+        radius: CLLocationDistance
+    ) -> Bool {
+        CLLocation(
+            latitude: center.latitude,
+            longitude: center.longitude
+        )
+        .distance(
+            from: CLLocation(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
             )
-            .replacingOccurrences(
-                of: "\\s+",
-                with: " ",
-                options: .regularExpression
-            )
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
+        ) <= radius
     }
 }
 
