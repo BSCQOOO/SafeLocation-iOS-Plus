@@ -66,7 +66,7 @@ struct SettingsView: View {
                     Button("打开“快捷指令”创建页面") {
                         _ = cellularBridge.openShortcutCreator()
                     }
-                    Text("纯 4G/5G 模式需要两个系统快捷指令。默认名称为“SafeLocation Airplane On”和“SafeLocation Airplane Off”。前者只添加“设置飞行模式：打开”，后者只添加“设置飞行模式：关闭”。不要使用“关闭蜂窝数据”动作；Developer Tunnel 的无 Wi-Fi 路径需要先保留蜂窝数据建立 LocalDevVPN，再切到飞行模式。")
+                    Text("需要两个飞行模式快捷指令。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -80,15 +80,6 @@ struct SettingsView: View {
                     LabeledContent("自定义位置方案", value: "\(session.customProfiles.count) 个")
                 }
 
-                Section("导入与快捷调用") {
-                    Text("主界面搜索框右侧的剪贴板按钮可直接读取经纬度、Apple 地图链接、Google 地图链接或普通地点名称。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("快捷指令仍可使用 safelocation:// URL Scheme；1.1 还支持 timer 和 panic 命令。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 Section("安全与恢复") {
                     Button("立即恢复真实定位", role: .destructive) { session.emergencyRestore() }
                     if session.autoRestoreDisplay != nil {
@@ -97,15 +88,6 @@ struct SettingsView: View {
                         }
                     }
                     Button("删除本机 RPPairing", role: .destructive) { confirmRemovePairing = true }
-                    Text("RPPairing 只保存在 App 的 Application Support 目录，并设置为当前 App 私有文件。不要把 pairing 文件分享给他人。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("兼容性") {
-                    Text("Safe Location 使用 Apple Developer DVT LocationSimulation。它不是硬件 GNSS 伪装；部分 App 能识别软件模拟定位。本项目不隐藏模拟标记，也不绕过第三方风控或反作弊。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 Section("关于") {
@@ -113,9 +95,6 @@ struct SettingsView: View {
                     if let commit = Bundle.main.object(forInfoDictionaryKey: "SafeLocationCommit") as? String {
                         LabeledContent("构建", value: String(commit.prefix(12)))
                     }
-                    LabeledContent("最低系统", value: "iOS 18")
-                    LabeledContent("Liquid Glass", value: "iOS 26+ 原生 / 旧版兼容")
-                    LabeledContent("重点适配", value: "iOS 27")
                     Link("底层开源项目 Locus", destination: URL(string: "https://github.com/ChrisMack32/Locus")!)
                     Link("LocalDevVPN", destination: URL(string: "https://github.com/jkcoxson/LocalDevVPN")!)
                 }
