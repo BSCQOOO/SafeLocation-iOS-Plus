@@ -17,7 +17,6 @@ struct SetupView: View {
                     checklist
                     pairingCard
                     vpnCard
-                    finishCard
                 }
                 .padding(16)
             }
@@ -63,10 +62,6 @@ struct SetupView: View {
                 .symbolRenderingMode(.hierarchical)
             Text("Safe Location")
                 .font(.title2.bold())
-            Text("iOS 27 本机 DVT 定位模拟。无需越狱，也不使用 HTTPS MITM。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
@@ -170,9 +165,6 @@ struct SetupView: View {
                 Spacer()
                 statusPill(LocalDevVPN.isConnected ? "已连接" : (LocalDevVPN.isInstalled ? "已安装" : "未安装"), ok: LocalDevVPN.isConnected)
             }
-            Text("它只提供本机开发者 Tunnel，让 Safe Location 能连接 iOS 的 DVT 服务。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Button {
                 LocalDevVPN.openOrInstall()
             } label: {
@@ -182,19 +174,6 @@ struct SetupView: View {
             .buttonStyle(.bordered)
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private var finishCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("准备完成", systemImage: "checkmark.shield.fill")
-                .font(.headline)
-            Text("配对完成并连接 LocalDevVPN 后，回到地图选点，点击 Teleport。需要恢复时点“恢复真实”。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
