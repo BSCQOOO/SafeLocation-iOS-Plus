@@ -1,0 +1,27 @@
+.DS_Store
+build/
+DerivedData/
+SafeLocation.xcodeproj/
+SafeLocation-unsigned.ipa
+Vendor/idevice/idevice.h
+Vendor/idevice/libidevice_ffi.a
+build-panel-tests/
+test-results/
+Tests/PanelHarness/PanelHarness.xcodeproj/
+ipa-verification.json
+
+# Signing / provisioning / private credentials
+*.p12
+*.pfx
+*.mobileprovision
+*.cer
+*.pem
+*.key
+AuthKey_*.p8
+.env
+.env.*
+
+# Device pairing records
+rp_pairing_file.plist
+*.mobiledevicepairing
+*.mobiledevicepair
