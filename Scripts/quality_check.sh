@@ -151,7 +151,7 @@ grep -q 'SafeLocation Airplane On' SafeLocation/Engine/CellularTunnelBridge.swif
 grep -q 'nanoseconds: 220_000_000' SafeLocation/Features/RootView.swift
 grep -q 'setSearchContext' SafeLocation/Features/SearchController.swift
 grep -q 'resolveAppleMapsStyleQuery' SafeLocation/Features/SearchController.swift
-grep -q 'regionPriority = .required' SafeLocation/Features/SearchController.swift
+grep -q 'priority: .required' SafeLocation/Features/SearchController.swift
 grep -q 'pointInMainlandPolygon' SafeLocation/Support/MapCoordinateConverter.swift
 grep -q '(53.0, 134.8)' SafeLocation/Support/MapCoordinateConverter.swift
 grep -q 'struct LocalSearchResult' SafeLocation/Features/SearchController.swift
