@@ -51,10 +51,10 @@ struct SettingsView: View {
                 Section("纯蜂窝实验") {
                     LabeledContent("当前网络", value: cellularBridge.networkKind.rawValue)
                     LabeledContent("桥接状态", value: cellularBridge.stage.title)
-                    TextField("关闭蜂窝快捷指令", text: $turnOffShortcut)
+                    TextField("开启飞行模式快捷指令", text: $turnOffShortcut)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    TextField("恢复蜂窝快捷指令", text: $turnOnShortcut)
+                    TextField("关闭飞行模式快捷指令", text: $turnOnShortcut)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Button("保存快捷指令名称") {
@@ -63,7 +63,10 @@ struct SettingsView: View {
                             turnOn: turnOnShortcut
                         )
                     }
-                    Text("默认使用 TurnOffData / TurnOnData。前者只需要“设置蜂窝数据：关闭”，后者只需要“设置蜂窝数据：打开”。Safe Location 会使用 Shortcuts x-callback 自动返回并继续 DVT 建链。")
+                    Button("打开“快捷指令”创建页面") {
+                        _ = cellularBridge.openShortcutCreator()
+                    }
+                    Text("纯 4G/5G 模式需要两个系统快捷指令。默认名称为“SafeLocation Airplane On”和“SafeLocation Airplane Off”。前者只添加“设置飞行模式：打开”，后者只添加“设置飞行模式：关闭”。不要使用“关闭蜂窝数据”动作；Developer Tunnel 的无 Wi-Fi 路径需要先保留蜂窝数据建立 LocalDevVPN，再切到飞行模式。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
