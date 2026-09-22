@@ -31,9 +31,6 @@ struct AutoRestoreSheet: View {
                                 Image(systemName: "clock.badge.checkmark")
                                 Text(label(for: minutes))
                                 Spacer()
-                                Text(session.isSpoofing ? "从现在开始" : "下次生效")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -41,12 +38,7 @@ struct AutoRestoreSheet: View {
 
                 Section("自定义") {
                     Stepper(value: $customMinutes, in: 5...720, step: 5) {
-                        HStack {
-                            Text("\(customMinutes) 分钟")
-                            Spacer()
-                            Text(customMinutes >= 60 ? String(format: "%.1f 小时", Double(customMinutes) / 60) : "")
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(customMinutes) 分钟")
                     }
                     Button("应用自定义时间") {
                         session.configureAutoRestore(minutes: customMinutes)
@@ -54,11 +46,6 @@ struct AutoRestoreSheet: View {
                     }
                 }
 
-                Section {
-                    Text("自动恢复依赖 Safe Location 的后台会话。系统强制结束 App、重启设备或 DVT 会话提前断开时，系统行为可能先于倒计时发生；重新打开 App 后会再次检查截止时间。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
             .navigationTitle("自动恢复")
             .navigationBarTitleDisplayMode(.inline)
