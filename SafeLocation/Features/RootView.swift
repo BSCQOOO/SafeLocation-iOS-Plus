@@ -229,6 +229,9 @@ struct RootView: View {
                 session.checkAutoRestoreDeadline()
                 session.recoverSessionIfNeeded(pairing: pairing)
                 ensureControlSheetPresented()
+                session.handleForegroundReturnFromExternalFlow(
+                    pairing: pairing
+                )
 
                 Task {
                     await refreshMapCoordinateSystem(
@@ -1593,7 +1596,7 @@ struct RootView: View {
 
         Task { @MainActor in
             try? await Task.sleep(
-                nanoseconds: 750_000_000
+                nanoseconds: 220_000_000
             )
 
             guard
@@ -1621,7 +1624,10 @@ struct RootView: View {
     }
 
     private func scheduleControlSheetRecovery() {
-        controlSheetRecoveryGeneration += 1
+        // Do not advance the generation here. ensureControlSheetPresented()
+        // may intentionally toggle the stale binding to false; the resulting
+        // onDismiss callback must not invalidate the very recovery that is
+        // trying to present the Apple Maps drawer again.
         let generation = controlSheetRecoveryGeneration
 
         Task { @MainActor in
