@@ -39,6 +39,7 @@ struct RootView: View {
 
     @State private var showSearchResults = false
     @State private var isResolvingInput = false
+    @State private var searchSelectionGeneration = 0
     @State private var alertText: String?
 
     @FocusState private var searchFocused: Bool
@@ -624,16 +625,9 @@ struct RootView: View {
                         id: \.offset
                     ) { _, result in
                         Button {
-                            let resolved = search.select(result)
-
-                            selectMapCoordinate(
-                                resolved.coordinate,
-                                name: resolved.name
-                            )
-
-                            cancelSearch(
-                                clearQuery: true
-                            )
+                            Task {
+                                await resolveSearchResult(result)
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 ZStack {
@@ -1910,6 +1904,53 @@ struct RootView: View {
                 < 0.000001
             && abs(lhs.longitude - rhs.longitude)
                 < 0.000001
+    }
+
+    @MainActor
+    private func resolveSearchResult(
+        _ result: LocalSearchResult
+    ) async {
+        searchSelectionGeneration += 1
+        let currentGeneration =
+            searchSelectionGeneration
+
+        isResolvingInput = true
+        defer {
+            if currentGeneration ==
+                searchSelectionGeneration {
+                isResolvingInput = false
+            }
+        }
+
+        do {
+            let resolved =
+                try await search.resolve(result)
+
+            guard
+                currentGeneration ==
+                    searchSelectionGeneration
+            else {
+                return
+            }
+
+            selectMapCoordinate(
+                resolved.coordinate,
+                name: resolved.title
+            )
+
+            cancelSearch(
+                clearQuery: true
+            )
+        } catch {
+            guard
+                currentGeneration ==
+                    searchSelectionGeneration
+            else {
+                return
+            }
+
+            alertText = error.localizedDescription
+        }
     }
 
     @MainActor
