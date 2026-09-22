@@ -64,6 +64,7 @@ jobs:
             SafeLocation-unsigned.ipa
             ipa-verification.json
           if-no-files-found: error
+          retention-days: 7
 
       - name: Upload interaction test evidence
         if: always()
@@ -72,3 +73,4 @@ jobs:
           name: Panel-interaction-tests-r${{ github.run_number }}
           path: test-results/
           if-no-files-found: ignore
+          retention-days: 3
