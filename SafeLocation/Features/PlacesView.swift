@@ -28,7 +28,7 @@ struct PlacesView: View {
                 }
 
                 if session.favorites.isEmpty && session.recents.isEmpty {
-                    ContentUnavailableView("还没有位置", systemImage: "mappin.slash", description: Text("在地图中选点后可以加入收藏。"))
+                    ContentUnavailableView("还没有位置", systemImage: "mappin.slash")
                 }
             }
             .navigationTitle("位置")
