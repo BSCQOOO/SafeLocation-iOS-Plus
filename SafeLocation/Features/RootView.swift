@@ -178,12 +178,20 @@ struct RootView: View {
             Task { await consumePendingImport() }
         }
         .onReceive(session.$simulatedCoordinate) { coordinate in
+            refreshSearchCenter()
+
             guard joystickMode, followJoystick, let coordinate else { return }
             moveCamera(
                 to: coordinate,
                 latitudeDelta: 0.0055,
                 animated: false
             )
+        }
+        .onReceive(session.$selectedCoordinate) { _ in
+            refreshSearchCenter()
+        }
+        .onReceive(mapLocation.$location) { _ in
+            refreshSearchCenter()
         }
         .onChange(of: position.positionedByUser) { _, positionedByUser in
             guard positionedByUser else { return }
@@ -214,6 +222,7 @@ struct RootView: View {
             searchExpansionGeneration += 1
 
             if focused {
+                refreshSearchCenter()
                 detentBeforeSearch = drawerDetent
                 beginAppleMapsSearchExpansion(
                     generation: searchExpansionGeneration
@@ -474,7 +483,6 @@ struct RootView: View {
                             quickActionSection
                             secondaryActionSection
                             recentPlacesSection
-                            connectionSection
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 14)
@@ -595,7 +603,7 @@ struct RootView: View {
                                 )
                                 .isEmpty
                             ? "输入地点开始搜索"
-                            : "继续输入，或按键盘上的“搜索”直接解析地点、坐标或地图链接。"
+                            : "没有附近结果，继续输入或直接搜索。"
                         )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -694,10 +702,7 @@ struct RootView: View {
             alignment: .leading,
             spacing: 10
         ) {
-            sectionHeader(
-                "位置控制",
-                trailing: session.status.title
-            )
+            sectionHeader("位置控制")
 
             HStack(spacing: 12) {
                 ZStack {
@@ -1007,36 +1012,6 @@ struct RootView: View {
                 )
             }
         }
-    }
-
-    private var connectionSection: some View {
-        HStack(spacing: 12) {
-            Label(
-                pairing.hasPairingFile
-                    ? "RPPairing 已就绪"
-                    : "需要配对",
-                systemImage:
-                    pairing.hasPairingFile
-                    ? "checkmark.shield.fill"
-                    : "exclamationmark.shield"
-            )
-
-            Spacer()
-
-            if let timer = session.autoRestoreDisplay {
-                Label(timer, systemImage: "timer")
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .frame(height: 44)
-        .safeGlass(
-            in: RoundedRectangle(
-                cornerRadius: 17,
-                style: .continuous
-            )
-        )
     }
 
     private var joystickSheetContent: some View {
@@ -1897,6 +1872,27 @@ struct RootView: View {
         }
     }
 
+    private func refreshSearchCenter() {
+        let anchor =
+            session.simulatedCoordinate
+            ?? mapLocation.bestRealCoordinate(
+                maxAge: 30,
+                maxHorizontalAccuracy: 250
+            )
+            ?? session.selectedCoordinate
+
+        guard let anchor else {
+            search.setSearchCenter(nil)
+            return
+        }
+
+        search.setSearchCenter(
+            mapDisplayCoordinate(
+                fromWGS84: anchor
+            )
+        )
+    }
+
     private func coordinatesAlmostEqual(
         _ lhs: CLLocationCoordinate2D,
         _ rhs: CLLocationCoordinate2D?
@@ -1927,29 +1923,37 @@ struct RootView: View {
         }
 
         do {
-            if let result =
-                try await MapLinkResolver.resolve(
-                    text
-                ) {
-                selectResolvedLocation(result)
+            refreshSearchCenter()
 
-                cancelSearch(
-                    clearQuery: true
+            if LocationInputParser.parse(text) == nil,
+               !text.contains("://"),
+               let nearby = try await search.resolveNearbyQuery(text) {
+                selectMapCoordinate(
+                    nearby.coordinate,
+                    name: nearby.name
                 )
 
-                withAnimation(
-                    .snappy(duration: 0.25)
-                ) {
-                    drawerDetent =
-                        Self.peekDetent
+                cancelSearch(clearQuery: true)
+
+                withAnimation(.snappy(duration: 0.25)) {
+                    drawerDetent = Self.peekDetent
+                }
+                return
+            }
+
+            if let result = try await MapLinkResolver.resolve(text) {
+                selectResolvedLocation(result)
+
+                cancelSearch(clearQuery: true)
+
+                withAnimation(.snappy(duration: 0.25)) {
+                    drawerDetent = Self.peekDetent
                 }
             } else {
-                alertText =
-                    "没有解析出位置。"
+                alertText = "没有找到这个地点。"
             }
         } catch {
-            alertText =
-                error.localizedDescription
+            alertText = error.localizedDescription
         }
     }
 
