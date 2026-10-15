@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -60,21 +60,20 @@ jobs:
           print(json.dumps(report,indent=2))
           PYCODE
 
-      - name: Upload IPA
-        uses: actions/upload-artifact@v5
-        with:
-          name: ${{ steps.artifact.outputs.name }}
-          path: |
-            SafeLocation-unsigned.ipa
-            ipa-verification.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload interaction test evidence
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: Panel-interaction-tests-r${{ github.run_number }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 3
+      - name: Preserve verified IPA in GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: safelocation-unsigned-r${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          test -s SafeLocation-unsigned.ipa
+          test -s ipa-verification.json
+          shasum -a 256 SafeLocation-unsigned.ipa | tee SafeLocation-unsigned.ipa.sha256
+          gh release create "$RELEASE_TAG" \
+            SafeLocation-unsigned.ipa \
+            ipa-verification.json \
+            SafeLocation-unsigned.ipa.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "Safe Location unsigned IPA - run $GITHUB_RUN_NUMBER" \
+            --notes "Unsigned iOS IPA from feature/cellular-tunnel-experiment, source commit $GITHUB_SHA. Sign the IPA before installing on iPhone." \
+            --prerelease
