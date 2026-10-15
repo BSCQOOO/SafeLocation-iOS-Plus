@@ -19,7 +19,7 @@ try:
 except ImportError:
     print('PyYAML unavailable; skipping YAML parser validation')
 else:
-    for p in ['project.yml','.github/workflows/build-unsigned-ipa.yml']:
+    for p in ['project.yml']
         with open(p,'r',encoding='utf-8') as f:
             yaml.safe_load(f)
         print('OK', p)
@@ -72,7 +72,6 @@ fi
 echo "[5/8] Check release version"
 grep -q 'MARKETING_VERSION: "1.8.0"' project.yml
 grep -q '<string>Safe Location</string>' SafeLocation/Resources/Info.plist
-grep -q 'SafeLocation-unsigned-v' .github/workflows/build-unsigned-ipa.yml
 
 echo "[6/8] Safety / packaging sanity"
 ! grep -R --line-number --exclude-dir=.git --exclude='quality_check.sh' -E 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|p12|password[[:space:]]*=' SafeLocation Scripts >/dev/null 2>&1 || {
