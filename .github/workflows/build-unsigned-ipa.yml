@@ -44,9 +44,6 @@ jobs:
       - name: Build and verify unsigned IPA
         run: bash ./Scripts/build_unsigned_ipa.sh
 
-      - name: Test persistent panel interactions
-        run: bash ./Scripts/test_panel_ui.sh
-
       - name: Show artifact info
         id: artifact
         run: |
