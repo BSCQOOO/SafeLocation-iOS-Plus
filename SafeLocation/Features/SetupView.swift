@@ -106,7 +106,7 @@ struct SetupView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(session.isSpoofing || session.isRoutePlaying || session.isJoystickActive || session.isRestoringRealLocation || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
+                .disabled(session.isProbingInstallation || session.isSpoofing || session.isRoutePlaying || session.isJoystickActive || session.isRestoringRealLocation || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
             }
 
             DisclosureGroup("高级：导入已有 RPPairing") {
