@@ -24,7 +24,11 @@ struct SafeLocationApp: App {
     private func handleIncoming(_ url: URL) async {
         let ext = url.pathExtension.lowercased()
         if ["plist", "mobiledevicepairing", "mobiledevicepair"].contains(ext) {
-            try? pairing.importPairing(from: url)
+            guard !session.isSpoofing, !session.isRestoringRealLocation, !session.isRoutePlaying, !session.isJoystickActive, session.interruptedCoordinate == nil || !pairing.hasPairingFile else {
+                session.lastError = "请先结束或恢复定位会话，再导入配对文件。"
+                return
+            }
+            do { try pairing.importPairing(from: url) } catch { session.lastError = error.localizedDescription }
             return
         }
 

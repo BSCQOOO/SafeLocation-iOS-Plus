@@ -39,6 +39,7 @@ struct SetupView: View {
             allowsMultipleSelection: false
         ) { result in
             do {
+                guard !session.isSpoofing, !session.isRestoringRealLocation, !session.isRoutePlaying, !session.isJoystickActive, session.interruptedCoordinate == nil || !pairing.hasPairingFile else { return }
                 guard let url = try result.get().first else { return }
                 try pairing.importPairing(from: url)
             } catch {
@@ -105,6 +106,7 @@ struct SetupView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(session.isSpoofing || session.isRoutePlaying || session.isJoystickActive || session.isRestoringRealLocation || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
             }
 
             DisclosureGroup("高级：导入已有 RPPairing") {
@@ -119,6 +121,7 @@ struct SetupView: View {
                 .padding(.top, 8)
             }
             .font(.footnote)
+            .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
         }
         .padding(16)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))

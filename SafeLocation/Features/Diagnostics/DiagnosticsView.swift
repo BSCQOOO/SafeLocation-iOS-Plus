@@ -6,6 +6,8 @@ struct DiagnosticsView: View {
     @EnvironmentObject private var pairService: PairOnDeviceService
     @AppStorage(TunnelProvider.preferenceKey) private var provider: TunnelProvider = .localDevVPN
     @State private var tunnelIP = TunnelConfig.targetIP
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var probeGeneration = 0
     @State private var probeResult: Bool?
     @State private var probing = false
 
@@ -17,8 +19,13 @@ struct DiagnosticsView: View {
                 LabeledContent("设备 TCP 通道", value: probing ? "检测中…" : (probeResult.map { $0 ? "可达（未验证配对）" : "不可达" } ?? "待检测"))
                 Button("检测设备通道") {
                     probing = true
+                    probeGeneration += 1
+                    let generation = probeGeneration
+                    let selected = provider
                     Task {
-                        probeResult = await provider.probeDeviceChannel()
+                        let reachable = await selected.probeDeviceChannel()
+                        guard generation == probeGeneration else { return }
+                        probeResult = reachable
                         probing = false
                     }
                 }
@@ -47,7 +54,7 @@ struct DiagnosticsView: View {
             Section("修复") {
                 Button("恢复真实定位") { session.restoreRealLocation() }
                 Button("重新本机配对") { pairService.start(pairingStore: pairing) }
-                    .disabled(pairService.isBusy)
+                    .disabled(pairService.isBusy || session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
                 Button("刷新配对状态") { pairing.refresh() }
             }
 
@@ -55,6 +62,13 @@ struct DiagnosticsView: View {
                 Text("这里检查的是 Safe Location 自身依赖。系统的 Developer Mode 没有公开 API 可以可靠直接读取；如果配对或 DVT 服务失败，请先确认开发者模式仍然开启。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                probeGeneration += 1
+                probeResult = nil
+                probing = false
             }
         }
         .navigationTitle("诊断")

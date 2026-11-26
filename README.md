@@ -1,4 +1,6 @@
-# Safe Location iOS 1.4
+# Safe Location iOS
+
+> **通用隧道开发分支（未发布）**：在 `feature/roam-inspired-reliability` 中新增 Shadowrocket 外部设备隧道适配，保留 LocalDevVPN。详见 [连接与真机验收](UNIVERSAL_TUNNEL_TEST_CN.md)。尚未通过 Xcode 构建和真机验证，不是已发布版本。
 
 Safe Location 是面向 **iOS 27** 的本机定位模拟前端。界面由 SwiftUI + MapKit 实现，底层通过 Apple Developer DVT `LocationSimulation` 服务向 `locationd` 提供开发者模拟坐标。
 
@@ -33,11 +35,11 @@ Safe Location 是面向 **iOS 27** 的本机定位模拟前端。界面由 Swift
 
 1. iPhone：**设置 → 隐私与安全性 → 开发者模式**，按提示重启并确认。
 2. 侧载安装 `SafeLocation-unsigned.ipa`（SideStore / AltStore / Sideloadly 等会重新签名）。
-3. 安装官方 **LocalDevVPN**。
+3. 选择官方 **LocalDevVPN**，或已开启指定本机路由的 **Shadowrocket**（开发分支测试功能）。
 4. Safe Location → **首次设置 → 开始本机配对**。
 5. 切到 **设置 → 隐私与安全性 → 开发者模式 → Pair with Host**。
 6. 输入 Safe Location 显示的 6 位配对码。
-7. 打开并连接 LocalDevVPN。
+7. 在首次设置选择设备隧道客户端，打开并连接所选客户端。
 8. 回到 Safe Location，地图选点或搜索地点，点击 **Teleport**。
 9. 使用完后点击 **恢复真实**。
 
@@ -109,11 +111,11 @@ safelocation://panic
 safelocation://vpn
 ```
 
-`select` 只选择位置；`set` 会尝试直接 Teleport，因此需要 RPPairing 和 LocalDevVPN 已正常。
+`select` 只选择位置；`set` 会尝试直接 Teleport，因此需要 RPPairing 和所选设备隧道已正常。
 
 ## Windows 用户：无需 Mac 构建 IPA
 
-项目自带 GitHub Actions：
+仓库保留构建脚本。当前工作流已移除，下面为历史 GitHub Actions 操作方式；在恢复工作流之前不能直接按此流程取得 IPA：
 
 1. GitHub 新建空仓库。
 2. 上传本项目解压后的全部文件，必须包含 `.github`。

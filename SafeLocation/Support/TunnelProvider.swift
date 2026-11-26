@@ -15,9 +15,9 @@ enum TunnelProvider: String, CaseIterable, Identifiable {
     var instructions: String {
         switch self {
         case .localDevVPN:
-            return "连接 LocalDevVPN 后返回 Safe Location。蜂窝网络连接失败时先使用 Wi-Fi。"
+            return "连接 LocalDevVPN 后返回 Safe Location。蜂窝网络连接失败时优先改用 Wi-Fi；必要时可在用户控制下暂时关闭蜂窝数据尝试建立会话，成功后再开启数据。"
         case .shadowrocket:
-            return "在 Shadowrocket → 设置 → 其它中开启「包含路由 10.7.0.1/32」，重新连接小火箭后返回。无需同时运行 LocalDevVPN。"
+            return "在 Shadowrocket → 设置 → 其它中开启「包含路由 10.7.0.1/32」，重新连接小火箭后返回。无需同时运行 LocalDevVPN。蜂窝网络不可达时先改用 Wi-Fi 验证。"
         }
     }
     // Interface presence is a hint, not proof of a working developer service.

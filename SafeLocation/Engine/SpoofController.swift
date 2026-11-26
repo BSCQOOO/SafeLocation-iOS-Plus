@@ -247,19 +247,31 @@ final class SpoofController: ObservableObject {
         guard ready(pairing), coordinates.count >= 2 else { if coordinates.count < 2 { fail("路线至少需要两个点。") }; return }
         guard coordinates.allSatisfy({ CLLocationCoordinate2DIsValid($0) }) else { fail("路线含无效坐标。"); return }
         stopMovementOnly(); isRoutePlaying = true; routeProgress = 0; status = .routePlaying
+        guard apply(coordinates[0], pairing: pairing, recent: false, state: .routePlaying, haptic: false) else {
+            isRoutePlaying = false
+            return
+        }
+        consumePendingRestore()
         let speed = travelMode.baseSpeed
+        let segmentDistances = zip(coordinates, coordinates.dropFirst()).map { a, b in
+            CLLocation(latitude: a.latitude, longitude: a.longitude).distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        let totalDistance = segmentDistances.reduce(0, +)
         routeTask = Task { [weak self] in
             guard let self else { return }
-            let total = max(1, coordinates.count - 1)
-            for i in 0..<total {
+            var traveled: Double = 0
+            for i in 0..<segmentDistances.count {
                 if Task.isCancelled { return }
                 let a = coordinates[i], b = coordinates[i + 1]
-                let meters = CLLocation(latitude: a.latitude, longitude: a.longitude).distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+                let meters = segmentDistances[i]
+                if meters <= 0 { continue }
                 let steps = max(1, Int(ceil(meters / max(0.5, speed * 0.5))))
                 for step in 1...steps {
                     if Task.isCancelled { return }
                     let t = Double(step) / Double(steps)
-                    let c = CLLocationCoordinate2D(latitude: a.latitude + (b.latitude-a.latitude)*t, longitude: a.longitude + (b.longitude-a.longitude)*t)
+                    let delta = (b.longitude - a.longitude + 540).truncatingRemainder(dividingBy: 360) - 180
+                    let longitude = (a.longitude + delta * t + 540).truncatingRemainder(dividingBy: 360) - 180
+                    let c = CLLocationCoordinate2D(latitude: a.latitude + (b.latitude-a.latitude)*t, longitude: longitude)
                     do { try await Task.sleep(nanoseconds: 500_000_000) }
                     catch { return }
                     guard !Task.isCancelled, self.isRoutePlaying, !self.isRestoringRealLocation else { return }
@@ -268,10 +280,12 @@ final class SpoofController: ObservableObject {
                         self.routeTask = nil
                         return
                     }
-                    self.routeProgress = min(1, (Double(i) + t) / Double(total))
+                    self.routeProgress = totalDistance > 0 ? min(1, (traveled + meters * t) / totalDistance) : 1
                 }
+                traveled += meters
             }
             guard !Task.isCancelled else { return }
+            self.routeProgress = 1
             self.routeTask = nil
             self.isRoutePlaying = false
             if self.isSpoofing { self.status = .active }
@@ -288,10 +302,24 @@ final class SpoofController: ObservableObject {
             guard apply(start, pairing: pairing, recent: false, state: .joystick, haptic: true) else { return }
         }
         isJoystickActive = true; status = .joystick
+        consumePendingRestore()
         joystickTimer?.invalidate()
         joystickTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickJoystick(pairing: pairing) }
         }
+    }
+
+    private func consumePendingRestore() {
+        if let minutes = pendingAutoRestoreMinutes, minutes > 0 {
+            scheduleAutoRestore(minutes: minutes)
+            pendingAutoRestoreMinutes = nil
+        }
+    }
+
+    private var desiredMovementStatus: Status {
+        if isRoutePlaying { return .routePlaying }
+        if isJoystickActive { return .joystick }
+        return .active
     }
 
     func setJoystickVector(_ vector: CGVector) { joystickVector = vector }
@@ -338,7 +366,8 @@ final class SpoofController: ObservableObject {
         checkAutoRestoreDeadline()
         guard !isRestoringRealLocation else { return }
         guard let c = simulatedCoordinate, pairing.hasPairingFile, TunnelProvider.current.hasCandidateInterface, !LocationEngine.isSessionActive else { return }
-        status = .reconnecting; _ = apply(c, pairing: pairing, recent: false, state: .active, haptic: false)
+        let targetStatus = desiredMovementStatus
+        status = .reconnecting; _ = apply(c, pairing: pairing, recent: false, state: targetStatus, haptic: false)
     }
 
     private func ready(_ pairing: PairingStore) -> Bool {
@@ -388,7 +417,8 @@ final class SpoofController: ObservableObject {
             healthTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in Task { @MainActor in
                 guard let self, !self.isRestoringRealLocation else { return }; self.checkAutoRestoreDeadline()
                 guard !self.isRestoringRealLocation, let c = self.simulatedCoordinate, !LocationEngine.isSessionActive else { return }
-                self.status = .reconnecting; _ = self.apply(c, pairing: pairing, recent: false, state: .active, haptic: false)
+                let targetStatus = self.desiredMovementStatus
+                self.status = .reconnecting; _ = self.apply(c, pairing: pairing, recent: false, state: targetStatus, haptic: false)
             }}
         }
     }
