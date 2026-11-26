@@ -9,26 +9,6 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 
 bash "$ROOT/Scripts/bootstrap_vendor.sh"
-
-# Headers may describe more APIs than the pinned static archive exports.
-# Inspect the actual arm64 definitions before enabling optional Swift calls.
-SYMBOLS="$(mktemp)"
-trap 'rm -f "$SYMBOLS"' EXIT
-CONDITIONS='$(inherited)'
-xcrun nm -arch arm64 -gU "$ROOT/Vendor/idevice/libidevice_ffi.a" > "$SYMBOLS"
-has_symbol() { awk -v wanted="_$1" '$NF == wanted { found=1 } END { exit !found }' "$SYMBOLS"; }
-if has_symbol afc_client_connect_rsd && has_symbol afc_client_free; then
-  CONDITIONS="$CONDITIONS SAFELOCATION_HAS_AFC"
-  echo "AFC: exported"
-else
-  echo "AFC: unavailable in pinned archive"
-fi
-if has_symbol installation_proxy_connect_rsd && has_symbol installation_proxy_client_free; then
-  CONDITIONS="$CONDITIONS SAFELOCATION_HAS_INSTALLATION_PROXY"
-  echo "InstallationProxy: exported"
-else
-  echo "InstallationProxy: unavailable in pinned archive"
-fi
 xcodegen generate
 rm -rf build Payload SafeLocation-unsigned.ipa
 
@@ -41,7 +21,6 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   DEVELOPMENT_TEAM="" \
-  SWIFT_ACTIVE_COMPILATION_CONDITIONS="$CONDITIONS" \
   build
 
 APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"

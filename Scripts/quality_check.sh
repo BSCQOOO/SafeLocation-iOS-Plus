@@ -78,6 +78,11 @@ fi
 
 echo "[5/8] Check release version"
 grep -q 'MARKETING_VERSION: "3.0.0"' project.yml
+grep -q 'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SAFELOCATION_HAS_INSTALLATION_PROXY"' project.yml
+if grep -q 'xcrun nm' Scripts/build_unsigned_ipa.sh; then
+  echo "Do not scan the pinned Rust archive with incompatible Apple nm" >&2
+  exit 1
+fi
 grep -q '<string>Safe Location</string>' SafeLocation/Resources/Info.plist
 
 echo "[6/8] Safety / packaging sanity"

@@ -32,7 +32,7 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      # The build script checks optional FFI symbols before enabling them.
+      # Build 25: pinned FFI capabilities configured in project.yml; no nm scan.
       - name: Build and verify unsigned IPA
         run: bash ./Scripts/build_unsigned_ipa.sh
 
