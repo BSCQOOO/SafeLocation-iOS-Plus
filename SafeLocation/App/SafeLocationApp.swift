@@ -14,6 +14,7 @@ struct SafeLocationApp: App {
                 .environmentObject(pairing)
                 .environmentObject(pairService)
                 .preferredColorScheme(.dark)
+                .task { await ExpiryReminder.reconcile() }
                 .onOpenURL { url in
                     Task { @MainActor in await handleIncoming(url) }
                 }

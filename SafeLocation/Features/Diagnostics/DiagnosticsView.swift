@@ -29,7 +29,7 @@ struct DiagnosticsView: View {
                         probing = false
                     }
                 }
-                .disabled(probing || session.isSpoofing || session.isRestoringRealLocation)
+                .disabled(probing || session.isProbingInstallation || session.isSpoofing || session.isRestoringRealLocation)
                 diagnosticRow("DVT 会话", ok: LocationEngine.isSessionActive, detail: LocationEngine.isSessionActive ? "活动" : "未建立")
                 diagnosticRow("模拟状态", ok: session.isSpoofing, detail: session.status.title)
             }
@@ -44,7 +44,7 @@ struct DiagnosticsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Button("保存地址") { TunnelConfig.setTargetIP(tunnelIP); probeResult = nil }
-                        .disabled(probing || session.isSpoofing || session.isRestoringRealLocation)
+                        .disabled(probing || session.isProbingInstallation || session.isSpoofing || session.isRestoringRealLocation)
                 }
                 Text(provider.instructions).font(.caption)
                 Button(provider.actionTitle) { provider.openClient() }
@@ -54,7 +54,7 @@ struct DiagnosticsView: View {
             Section("修复") {
                 Button("恢复真实定位") { session.restoreRealLocation() }
                 Button("重新本机配对") { pairService.start(pairingStore: pairing) }
-                    .disabled(pairService.isBusy || session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
+                    .disabled(pairService.isBusy || session.isProbingInstallation || session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive || (session.interruptedCoordinate != nil && pairing.hasPairingFile))
                 Button("刷新配对状态") { pairing.refresh() }
             }
 

@@ -5,7 +5,7 @@ name: Build Safe Location unsigned IPA
 on:
   workflow_dispatch:
   push:
-    branches: [ feature/roam-inspired-reliability ]
+    branches: [ feature/roam-inspired-reliability, feature/v3-self-maintenance ]
     paths:
       - ".github/workflows/build-unsigned-ipa.yml"
 
