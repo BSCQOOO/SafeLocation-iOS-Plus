@@ -40,6 +40,7 @@ struct RootView: View {
     @State private var showSearchResults = false
     @State private var isResolvingInput = false
     @State private var alertText: String?
+    @State private var confirmRealLocation = false
 
     @FocusState private var searchFocused: Bool
 
@@ -373,7 +374,9 @@ struct RootView: View {
 
     private var controlSheetContent: some View {
         Group {
-            if joystickMode {
+            if session.interruptedCoordinate != nil {
+                interruptedSessionPanel
+            } else if joystickMode {
                 joystickSheetContent
             } else {
                 regularControlSheet
@@ -414,6 +417,47 @@ struct RootView: View {
         .sheet(isPresented: $showTimer) {
             AutoRestoreSheet()
                 .environmentObject(session)
+        }
+    }
+
+    private var interruptedSessionPanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("上次定位会话未正常结束", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                Text("系统定位可能仍处于模拟状态。请先恢复真实定位，或在其他定位应用中确认已恢复。不会自动重启模拟。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let coordinate = session.interruptedCoordinate {
+                    Text(SpoofController.coordinateLabel(coordinate))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    session.restoreRealLocation(pairingPath: pairing.pairingPath)
+                } label: {
+                    Label(session.isRestoringRealLocation ? "正在恢复…" : "恢复真实定位", systemImage: "location.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(session.isRestoringRealLocation || !pairing.hasPairingFile)
+                if !pairing.hasPairingFile {
+                    Button("重新配对") { showSetup = true }
+                }
+                Button("打开 LocalDevVPN") { LocalDevVPN.openOrInstall() }
+                Button("我已确认真实定位") { confirmRealLocation = true }
+                    .disabled(session.isRestoringRealLocation)
+                if let error = session.lastError {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+        }
+        .confirmationDialog("确认真实定位已恢复？", isPresented: $confirmRealLocation, titleVisibility: .visible) {
+            Button("确认并清除恢复记录") { session.acknowledgeRealLocation() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("此操作仅清除本地恢复记录，不会向系统发送恢复指令。")
         }
     }
 
