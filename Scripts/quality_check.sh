@@ -40,6 +40,12 @@ required=(
   SafeLocation/Features/Joystick/JoystickSheet.swift
   SafeLocation/Features/Diagnostics/DiagnosticsView.swift
   SafeLocation/Support/TunnelProvider.swift
+  SafeLocation/Signing/ProfileMetadata.swift
+  SafeLocation/Signing/PackageVault.swift
+  SafeLocation/Signing/InstallationServiceProbe.swift
+  SafeLocation/Signing/SigningManagementView.swift
+  SafeLocation/Signing/ReleaseCatalog.swift
+  SafeLocation/Signing/ExpiryReminder.swift
   SafeLocation/Support/GPXService.swift
   SafeLocation/Support/GlassUI.swift
   SafeLocation/Support/LocationProfile.swift
@@ -71,7 +77,7 @@ else
 fi
 
 echo "[5/8] Check release version"
-grep -q 'MARKETING_VERSION: "1.8.0"' project.yml
+grep -q 'MARKETING_VERSION: "3.0.0"' project.yml
 grep -q '<string>Safe Location</string>' SafeLocation/Resources/Info.plist
 
 echo "[6/8] Safety / packaging sanity"
@@ -138,6 +144,8 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   trap 'rm -rf "$CHECK_DIR"' EXIT
   xcrun swiftc SafeLocation/Support/MapCoordinateConverter.swift SafeLocation/Support/MapLinkResolver.swift SafeLocation/Support/LocationInputParser.swift SafeLocation/Support/GPXService.swift Tests/CoordinateConversion/main.swift -o "$CHECK_DIR/coordinate-check"
   "$CHECK_DIR/coordinate-check"
+  xcrun swiftc SafeLocation/Signing/ProfileMetadata.swift SafeLocation/Signing/ReleaseCatalog.swift SafeLocation/Signing/PackageVault.swift Tests/SigningFoundation/main.swift -o "$CHECK_DIR/signing-check"
+  "$CHECK_DIR/signing-check"
 else
   echo "Apple SDK unavailable; skipping executable coordinate/GPX regression tests"
 fi

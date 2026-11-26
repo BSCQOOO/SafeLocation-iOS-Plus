@@ -40,20 +40,20 @@ struct SettingsView: View {
                     Picker("设备隧道客户端", selection: $provider) {
                         ForEach(TunnelProvider.allCases) { item in Text(item.title).tag(item) }
                     }
-                    .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive)
+                    .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isProbingInstallation || session.isRoutePlaying || session.isJoystickActive)
                     Text(provider.instructions).font(.caption).foregroundStyle(.secondary)
                     if provider == .localDevVPN {
                         TextField("Tunnel IP", text: $tunnelIP)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         Button("保存 Tunnel IP") { TunnelConfig.setTargetIP(tunnelIP) }
-                            .disabled(session.isSpoofing || session.isRestoringRealLocation)
+                            .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isProbingInstallation)
                     } else {
                         LabeledContent("设备 IP", value: TunnelConfig.defaultIP)
                     }
                     Button(provider.actionTitle) { provider.openClient() }
                         .disabled(provider == .shadowrocket && !provider.isInstalled)
-                    Button("重新运行首次设置") { showSetup = true }
+                    Button("重新运行首次设置") { showSetup = true }.disabled(session.isProbingInstallation)
                 }
 
                 Section("地图坐标") {
@@ -84,6 +84,14 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("签名与应用管理") {
+                    NavigationLink {
+                        SigningManagementView()
+                    } label: {
+                        Label("签名与应用管理", systemImage: "checkmark.shield")
+                    }
+                }
+
                 Section("安全与恢复") {
                     Button("立即恢复真实定位", role: .destructive) { session.emergencyRestore() }
                     if session.autoRestoreDisplay != nil {
@@ -92,7 +100,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("删除本机 RPPairing", role: .destructive) { confirmRemovePairing = true }
-                        .disabled(session.isSpoofing || session.isRestoringRealLocation || session.interruptedCoordinate != nil || LocationEngine.isSessionActive)
+                        .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isProbingInstallation || session.interruptedCoordinate != nil || LocationEngine.isSessionActive)
                     Text("RPPairing 只保存在 App 的 Application Support 目录，并设置为当前 App 私有文件。不要把 pairing 文件分享给他人。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -127,7 +135,7 @@ struct SettingsView: View {
         }
         .confirmationDialog("删除配对文件？", isPresented: $confirmRemovePairing, titleVisibility: .visible) {
             Button("删除", role: .destructive) {
-                guard !session.isSpoofing, !session.isRestoringRealLocation, session.interruptedCoordinate == nil, !LocationEngine.isSessionActive else { return }
+                guard !session.isSpoofing, !session.isRestoringRealLocation, !session.isProbingInstallation, session.interruptedCoordinate == nil, !LocationEngine.isSessionActive else { return }
                 try? pairing.removePairing()
             }
             Button("取消", role: .cancel) {}

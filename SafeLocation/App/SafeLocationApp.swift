@@ -14,6 +14,7 @@ struct SafeLocationApp: App {
                 .environmentObject(pairing)
                 .environmentObject(pairService)
                 .preferredColorScheme(.dark)
+                .task { await ExpiryReminder.reconcile() }
                 .onOpenURL { url in
                     Task { @MainActor in await handleIncoming(url) }
                 }
@@ -24,7 +25,7 @@ struct SafeLocationApp: App {
     private func handleIncoming(_ url: URL) async {
         let ext = url.pathExtension.lowercased()
         if ["plist", "mobiledevicepairing", "mobiledevicepair"].contains(ext) {
-            guard !session.isSpoofing, !session.isRestoringRealLocation, !session.isRoutePlaying, !session.isJoystickActive, session.interruptedCoordinate == nil || !pairing.hasPairingFile else {
+            guard !session.isProbingInstallation, !session.isSpoofing, !session.isRestoringRealLocation, !session.isRoutePlaying, !session.isJoystickActive, session.interruptedCoordinate == nil || !pairing.hasPairingFile else {
                 session.lastError = "请先结束或恢复定位会话，再导入配对文件。"
                 return
             }

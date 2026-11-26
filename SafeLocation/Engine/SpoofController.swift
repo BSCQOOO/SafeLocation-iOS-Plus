@@ -43,6 +43,7 @@ final class SpoofController: ObservableObject {
     @Published private(set) var isRoutePlaying = false
     @Published private(set) var isJoystickActive = false
     @Published private(set) var isRestoringRealLocation = false
+    @Published private(set) var isProbingInstallation = false
     @Published private(set) var autoRestoreDeadline: Date?
     @Published private(set) var autoRestoreRemaining: TimeInterval?
     @Published private(set) var pendingAutoRestoreMinutes: Int?
@@ -370,7 +371,19 @@ final class SpoofController: ObservableObject {
         status = .reconnecting; _ = apply(c, pairing: pairing, recent: false, state: targetStatus, haptic: false)
     }
 
+    var canProbeInstallation: Bool {
+        !isProbingInstallation && !isSpoofing && !isRestoringRealLocation && !isRoutePlaying && !isJoystickActive && interruptedCoordinate == nil && !LocationEngine.isSessionActive
+    }
+
+    func probeInstallation(pairing: PairingStore) async -> InstallationServiceProbe.Report {
+        guard canProbeInstallation, pairing.hasPairingFile else { return .blocked }
+        isProbingInstallation = true
+        defer { isProbingInstallation = false }
+        return await InstallationServiceProbe.run(pairingPath: pairing.pairingPath, deviceIP: TunnelConfig.effectiveIP)
+    }
+
     private func ready(_ pairing: PairingStore) -> Bool {
+        guard !isProbingInstallation else { fail("正在检查安装服务，请在检查结束后再开始模拟定位。"); return false }
         guard !isRestoringRealLocation else { return false }
         guard interruptedCoordinate == nil else { fail("请先处理上次未正常结束的定位会话。"); return false }
         guard pairing.hasPairingFile else { fail("请先完成 iOS 27 本机配对。") ; return false }
