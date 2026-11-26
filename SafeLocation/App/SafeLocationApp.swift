@@ -51,7 +51,7 @@ struct SafeLocationApp: App {
                 do {
                     if let resolved = try await MapLinkResolver.resolve(input) {
                         session.select(
-                            resolved.coordinate,
+                            resolved.canonicalCoordinate(system: MapCoordinateConverter.effectiveSystem),
                             name: name ?? resolved.name,
                             autoRestoreMinutes: minutes
                         )

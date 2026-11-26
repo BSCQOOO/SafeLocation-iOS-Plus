@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage(TunnelProvider.preferenceKey) private var provider: TunnelProvider = .localDevVPN
+    @AppStorage(MapCoordinateConverter.preferenceKey) private var coordinatePreference: MapCoordinateConverter.Preference = .automatic
     @State private var tunnelIP = TunnelConfig.targetIP
     @State private var showSetup = false
     @State private var confirmRemovePairing = false
@@ -53,6 +54,16 @@ struct SettingsView: View {
                     Button(provider.actionTitle) { provider.openClient() }
                         .disabled(provider == .shadowrocket && !provider.isInstalled)
                     Button("重新运行首次设置") { showSetup = true }
+                }
+
+                Section("地图坐标") {
+                    Picker("地图坐标模式", selection: $coordinatePreference) {
+                        ForEach(MapCoordinateConverter.Preference.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    Text("自动模式探测 Apple 地图坐标表现；若海外选点偏移，可切换 WGS-84 后重新选点。国内地图偏移可测试 GCJ-02。输入经纬度始终按 WGS-84 处理。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("移动默认值") {

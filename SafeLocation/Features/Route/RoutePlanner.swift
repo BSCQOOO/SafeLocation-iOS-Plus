@@ -49,8 +49,9 @@ final class RoutePlanner: ObservableObject {
         defer { isLoading = false }
 
         let request = MKDirections.Request()
-        request.source = MKMapItem(placemark: MKPlacemark(coordinate: start))
-        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: end))
+        let system = MapCoordinateConverter.effectiveSystem
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: MapCoordinateConverter.wgs84ToMap(start, system: system)))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: MapCoordinateConverter.wgs84ToMap(end, system: system)))
         request.transportType = transport.mkType
         request.requestsAlternateRoutes = false
 
@@ -61,7 +62,9 @@ final class RoutePlanner: ObservableObject {
                 return
             }
             route = PlannedRoute(
-                coordinates: first.polyline.coordinates,
+                coordinates: first.polyline.coordinates.map {
+                    MapCoordinateConverter.mapToWGS84($0, system: system)
+                },
                 distance: first.distance,
                 expectedTravelTime: first.expectedTravelTime,
                 name: name

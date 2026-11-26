@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SetupView: View {
+    @EnvironmentObject private var session: SpoofController
     @EnvironmentObject private var pairing: PairingStore
     @EnvironmentObject private var pairService: PairOnDeviceService
     @Environment(\.dismiss) private var dismiss
@@ -174,6 +175,7 @@ struct SetupView: View {
             Picker("设备隧道客户端", selection: $provider) {
                 ForEach(TunnelProvider.allCases) { item in Text(item.title).tag(item) }
             }
+            .disabled(session.isSpoofing || session.isRoutePlaying || session.isJoystickActive || session.isRestoringRealLocation)
             Text(provider.instructions)
                 .font(.caption)
                 .foregroundStyle(.secondary)

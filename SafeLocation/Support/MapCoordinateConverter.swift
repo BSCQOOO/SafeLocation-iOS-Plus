@@ -8,10 +8,41 @@ enum MapCoordinateConverter {
         case gcj02 = "GCJ-02"
     }
 
+    enum Preference: String, CaseIterable, Identifiable {
+        case automatic = "自动"
+        case wgs84 = "WGS-84"
+        case gcj02 = "GCJ-02"
+        var id: String { rawValue }
+    }
+
+    static let preferenceKey = "safeLocation.mapCoordinatePreference"
+    private static let lastSystemKey = "safeLocation.lastMapCoordinateSystem"
+
+    static var preference: Preference {
+        Preference(rawValue: UserDefaults.standard.string(forKey: preferenceKey) ?? "") ?? .automatic
+    }
+
+    static var effectiveSystem: MapCoordinateSystem {
+        switch preference {
+        case .wgs84: return .wgs84
+        case .gcj02: return .gcj02
+        case .automatic:
+            return MapCoordinateSystem(rawValue: UserDefaults.standard.string(forKey: lastSystemKey) ?? "") ?? .wgs84
+        }
+    }
+
+    static func refreshConfiguredSystem() async -> MapCoordinateSystem {
+        guard preference == .automatic else { return effectiveSystem }
+        let detected = await detectMapCoordinateSystem(fallback: effectiveSystem)
+        guard !Task.isCancelled, preference == .automatic else { return effectiveSystem }
+        UserDefaults.standard.set(detected.rawValue, forKey: lastSystemKey)
+        return detected
+    }
+
     /// MapKit can expose different coordinate representations depending on
     /// the active Apple Maps service region. Safe Location keeps the injected
     /// coordinate canonical in WGS-84 and converts only at the map boundary.
-    static func detectMapCoordinateSystem() async -> MapCoordinateSystem {
+    static func detectMapCoordinateSystem(fallback: MapCoordinateSystem = .wgs84) async -> MapCoordinateSystem {
         await withTaskGroup(of: MapCoordinateSystem?.self) { group in
             group.addTask {
                 let request = MKLocalSearch.Request()
@@ -51,18 +82,23 @@ enum MapCoordinateConverter {
             let detected = await group.next() ?? nil
             group.cancelAll()
 
-            // The current product is primarily used with mainland Apple Maps.
-            // A failed probe must be conservative: GCJ-02 prevents the large
-            // map-selection offset reported on domestic tiles.
-            return detected ?? .gcj02
+            // A network error is not evidence of GCJ-02. Retain the last
+            // known representation (or WGS-84 on a fresh installation).
+            return detected ?? fallback
         }
     }
 
     static func mapToWGS84(
         _ coordinate: CLLocationCoordinate2D,
-        system: MapCoordinateSystem
+        system: MapCoordinateSystem,
+        countryCode: String? = nil
     ) -> CLLocationCoordinate2D {
         guard system == .gcj02 else { return coordinate }
+        // A MapKit placemark outside the relevant China-region services
+        // must not be transformed merely because it lies in the broad box.
+        if let code = countryCode?.uppercased(), !["CN", "HK", "MO", "TW"].contains(code) {
+            return coordinate
+        }
 
         let converted = gcj02ToWgs84(
             latitude: coordinate.latitude,
@@ -156,6 +192,12 @@ enum MapCoordinateConverter {
             longitude >= 72.004 &&
             longitude <= 137.8347
 
+        // The coarse rectangle overlaps Japan, including Nagano. Exclude
+        // the east-of-China part of Japan's main islands explicitly.
+        // This is a targeted regression guard, not a national boundary map.
+        if longitude >= 130 && latitude >= 30 && latitude <= 40 {
+            return false
+        }
         return broadChina
     }
 

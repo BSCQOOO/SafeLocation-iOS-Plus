@@ -62,7 +62,10 @@ final class SpoofController: ObservableObject {
         if let saved = UserDefaults.standard.array(forKey: interruptedKey) as? [Double],
            saved.count == 2 {
             let coordinate = CLLocationCoordinate2D(latitude: saved[0], longitude: saved[1])
-            if CLLocationCoordinate2DIsValid(coordinate) { interruptedCoordinate = coordinate }
+            if CLLocationCoordinate2DIsValid(coordinate) {
+                interruptedCoordinate = coordinate
+                status = .failed("上次定位会话未正常结束")
+            }
         }
         if let d = UserDefaults.standard.object(forKey: deadlineKey) as? Date, d > .now {
             autoRestoreDeadline = d
@@ -242,6 +245,7 @@ final class SpoofController: ObservableObject {
 
     func startRoute(_ coordinates: [CLLocationCoordinate2D], pairing: PairingStore) {
         guard ready(pairing), coordinates.count >= 2 else { if coordinates.count < 2 { fail("路线至少需要两个点。") }; return }
+        guard coordinates.allSatisfy({ CLLocationCoordinate2DIsValid($0) }) else { fail("路线含无效坐标。"); return }
         stopMovementOnly(); isRoutePlaying = true; routeProgress = 0; status = .routePlaying
         let speed = travelMode.baseSpeed
         routeTask = Task { [weak self] in
@@ -348,6 +352,7 @@ final class SpoofController: ObservableObject {
 
     @discardableResult private func apply(_ c: CLLocationCoordinate2D, pairing: PairingStore, recent: Bool, state: Status, haptic: Bool) -> Bool {
         guard !isRestoringRealLocation else { return false }
+        guard CLLocationCoordinate2DIsValid(c) else { fail("无效坐标。"); return false }
         if status != .routePlaying && status != .joystick { status = .connecting }
         switch LocationEngine.set(latitude: c.latitude, longitude: c.longitude, pairingPath: pairing.pairingPath, deviceIP: TunnelConfig.effectiveIP) {
         case .success:

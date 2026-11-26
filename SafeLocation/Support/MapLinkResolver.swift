@@ -11,18 +11,29 @@ struct ResolvedLocationInput {
     let coordinate: CLLocationCoordinate2D
     let name: String
     let coordinateSpace: CoordinateSpace
+    var countryCode: String? = nil
+
+    func canonicalCoordinate(system: MapCoordinateConverter.MapCoordinateSystem) -> CLLocationCoordinate2D {
+        switch coordinateSpace {
+        case .wgs84: return coordinate
+        case .mapKit:
+            return MapCoordinateConverter.mapToWGS84(coordinate, system: system, countryCode: countryCode)
+        }
+    }
 }
 
 enum MapLinkResolver {
-    static func resolve(_ raw: String) async throws -> ResolvedLocationInput? {
+    static func resolve(_ raw: String, region: MKCoordinateRegion? = nil) async throws -> ResolvedLocationInput? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
 
         if let coordinate = LocationInputParser.parse(text) {
+            let host = URLComponents(string: text)?.host?.lowercased()
+            let isAppleMaps = host == "maps.apple.com" || host?.hasSuffix(".maps.apple.com") == true
             return ResolvedLocationInput(
                 coordinate: coordinate,
                 name: inferredName(from: text) ?? "输入位置",
-                coordinateSpace: .wgs84
+                coordinateSpace: isAppleMaps ? .mapKit : .wgs84
             )
         }
 
@@ -52,20 +63,22 @@ enum MapLinkResolver {
 
         // Plain place names are also accepted as a convenience.
         if !text.contains("://") {
-            return try await localSearch(text)
+            return try await localSearch(text, region: region)
         }
         return nil
     }
 
-    private static func localSearch(_ query: String) async throws -> ResolvedLocationInput? {
+    private static func localSearch(_ query: String, region: MKCoordinateRegion? = nil) async throws -> ResolvedLocationInput? {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
+        if let region { request.region = region }
         let response = try await MKLocalSearch(request: request).start()
         guard let item = response.mapItems.first else { return nil }
         return ResolvedLocationInput(
             coordinate: item.placemark.coordinate,
             name: item.name ?? query,
-            coordinateSpace: .mapKit
+            coordinateSpace: .mapKit,
+            countryCode: item.placemark.isoCountryCode
         )
     }
 

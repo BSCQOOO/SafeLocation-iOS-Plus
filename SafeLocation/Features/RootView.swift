@@ -52,8 +52,15 @@ struct RootView: View {
     @State private var isThreeD = false
     @State private var liveCamera: MapCamera?
     @State private var mapTrackingMode: MapTrackingMode = .free
-    @State private var mapCoordinateSystem =
-        MapCoordinateConverter.MapCoordinateSystem.gcj02
+    @AppStorage(MapCoordinateConverter.preferenceKey) private var coordinatePreference: MapCoordinateConverter.Preference = .automatic
+    @State private var mapCoordinateSystem = MapCoordinateConverter.effectiveSystem
+    @State private var liveSearchRegion: MKCoordinateRegion?
+    @State private var coordinateRefreshGeneration = 0
+    @State private var typedInputGeneration = 0
+
+    private var hasPresentedChild: Bool {
+        showSettings || showSetup || showPlaces || showProfiles || showRoute || showTimer
+    }
 
     private var searchMode: Bool {
         searchFocused || showSearchResults
@@ -113,7 +120,14 @@ struct RootView: View {
             .animation(.snappy(duration: 0.24), value: searchMode)
         }
         .onAppear {
+            if session.interruptedCoordinate != nil { drawerDetent = Self.mediumDetent }
             presentControlSheet()
+        }
+        .onChange(of: hasPresentedChild) { _, presented in
+            if !presented { ensureControlSheetPresented() }
+        }
+        .onChange(of: coordinatePreference) { _, _ in
+            Task { await refreshMapCoordinateSystem(recenterAfterChange: true) }
         }
         .sheet(
             isPresented: $controlSheetPresented,
@@ -216,6 +230,7 @@ struct RootView: View {
             searchExpansionGeneration += 1
 
             if focused {
+                search.setRegion(liveSearchRegion)
                 detentBeforeSearch = drawerDetent
                 beginAppleMapsSearchExpansion(
                     generation: searchExpansionGeneration
@@ -270,6 +285,7 @@ struct RootView: View {
             }
             .onMapCameraChange(frequency: .continuous) { context in
                 liveCamera = context.camera
+                liveSearchRegion = context.region
                 isThreeD = context.camera.pitch > 12
             }
             .onTapGesture { point in
@@ -656,22 +672,18 @@ struct RootView: View {
                     ) { _, result in
                         Button {
                             Task {
+                                let revision = search.revision
                                 do {
-                                    let resolved = try await search.resolve(
-                                        result
-                                    )
-
-                                    selectMapCoordinate(
-                                        resolved.coordinate,
-                                        name: resolved.name
-                                    )
+                                    let resolved = try await search.resolve(result)
+                                    guard revision == search.revision, showSearchResults else { return }
+                                    selectResolvedLocation(resolved)
 
                                     cancelSearch(
                                         clearQuery: true
                                     )
                                 } catch {
-                                    alertText = error
-                                        .localizedDescription
+                                    guard revision == search.revision, showSearchResults else { return }
+                                    alertText = error.localizedDescription
                                 }
                             }
                         } label: {
@@ -1618,6 +1630,7 @@ struct RootView: View {
     }
 
     private func ensureControlSheetPresented() {
+        guard scenePhase == .active, !hasPresentedChild else { return }
         if controlSheetVisible {
             controlSheetRecoveryGeneration += 1
             return
@@ -1641,6 +1654,8 @@ struct RootView: View {
 
             guard
                 generation == controlSheetRecoveryGeneration,
+                scenePhase == .active,
+                !hasPresentedChild,
                 controlSheetPresented,
                 !controlSheetVisible
             else {
@@ -1654,7 +1669,9 @@ struct RootView: View {
             )
 
             guard
-                generation == controlSheetRecoveryGeneration
+                generation == controlSheetRecoveryGeneration,
+                scenePhase == .active,
+                !hasPresentedChild
             else {
                 return
             }
@@ -1674,6 +1691,8 @@ struct RootView: View {
 
             guard
                 generation == controlSheetRecoveryGeneration,
+                scenePhase == .active,
+                !hasPresentedChild,
                 !controlSheetVisible,
                 !controlSheetPresented
             else {
@@ -1806,19 +1825,7 @@ struct RootView: View {
     private func selectResolvedLocation(
         _ result: ResolvedLocationInput
     ) {
-        switch result.coordinateSpace {
-        case .wgs84:
-            select(
-                result.coordinate,
-                name: result.name
-            )
-
-        case .mapKit:
-            selectMapCoordinate(
-                result.coordinate,
-                name: result.name
-            )
-        }
+        select(result.canonicalCoordinate(system: mapCoordinateSystem), name: result.name)
     }
 
     private func mapDisplayCoordinate(
@@ -1834,9 +1841,10 @@ struct RootView: View {
     private func refreshMapCoordinateSystem(
         recenterAfterChange: Bool
     ) async {
-        let detected =
-            await MapCoordinateConverter
-                .detectMapCoordinateSystem()
+        coordinateRefreshGeneration += 1
+        let generation = coordinateRefreshGeneration
+        let detected = await MapCoordinateConverter.refreshConfiguredSystem()
+        guard generation == coordinateRefreshGeneration, !Task.isCancelled else { return }
 
         guard detected != mapCoordinateSystem else {
             return
@@ -1958,16 +1966,20 @@ struct RootView: View {
 
         guard !text.isEmpty else { return }
 
+        typedInputGeneration += 1
+        let generation = typedInputGeneration
+        let revision = search.revision
         isResolvingInput = true
         defer {
-            isResolvingInput = false
+            if generation == typedInputGeneration { isResolvingInput = false }
         }
 
         do {
             if let result =
                 try await MapLinkResolver.resolve(
-                    text
+                    text, region: liveSearchRegion
                 ) {
+                guard generation == typedInputGeneration, revision == search.revision else { return }
                 selectResolvedLocation(result)
 
                 cancelSearch(
@@ -1981,12 +1993,12 @@ struct RootView: View {
                         Self.peekDetent
                 }
             } else {
-                alertText =
-                    "没有解析出位置。"
+                guard generation == typedInputGeneration, revision == search.revision else { return }
+                alertText = "没有解析出位置。"
             }
         } catch {
-            alertText =
-                error.localizedDescription
+            guard generation == typedInputGeneration, revision == search.revision else { return }
+            alertText = error.localizedDescription
         }
     }
 
