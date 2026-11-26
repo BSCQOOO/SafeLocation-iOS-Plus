@@ -1,6 +1,6 @@
 # SafeLocation 3.0 alpha：自维护版开发记录
 
-基于已通过 R39 构建的通用隧道分支。保留原有地图界面、Bundle ID、配对和定位功能；新功能只在设置中的签名与应用管理页面。版本号 3.0.0 / Build 23 为内部技术验证包，不代表正式发布。
+基于已通过 R39 构建的通用隧道分支。保留原有地图界面、Bundle ID、配对和定位功能；新功能只在设置中的签名与应用管理页面。版本号 3.0.0 / Build 24 为内部技术验证包，不代表正式发布。
 
 ## 本轮实际功能
 - 读取本机嵌入描述文件 CMS 中的 plist，显示到期日期和剩余时间；不是 CMS 验签，不判断证书吊销。
@@ -25,3 +25,6 @@ Apple Account / 2FA / Anisette、证书申请和保存、签署 Mach-O 与嵌套
 - https://github.com/SideStore/SideSign
 - https://github.com/SideStore/SideStore
 - https://github.com/ChrisMack32/Locus/blob/83c8fb324983728e8f44759cfd834dc637ee38b5/Vendor/idevice/idevice.h
+
+## Build 23 链接失败与 Build 24 修复
+R40 的源码和回归检查通过，但 arm64 链接失败：`afc_client_connect_rsd`、`afc_client_free` 在现有预编译静态库中缺失。头文件存在声明不代表库存在实现。Build 24 使用 macOS nm 检查实际导出符号，分别按能力启用 AFC 与 InstallationProxy 调用；不支持时界面明确标记底层库未提供接口，而非伪造连接成功。未改变原有 idevice 版本，完整 AFC 支持仍需补齐兼容的依赖库并在真机验证。重新构建结果以 Actions 为准。

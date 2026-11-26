@@ -75,6 +75,14 @@ struct SigningManagementView: View {
             Section("本机安装通道") {
                 LabeledContent("当前隧道", value: provider.title)
                 LabeledContent("RPPairing 文件", value: pairing.hasPairingFile ? "存在" : "未配置")
+                if InstallationServiceProbe.initialAFCStatus == .unavailable {
+                    Text("当前底层库缺少 AFC 实现，暂不能测试文件传输。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if InstallationServiceProbe.initialInstallationStatus == .unavailable {
+                    Text("当前底层库缺少 InstallationProxy 实现，暂不能测试安装服务。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Button {
                     report = nil
                     probing = true
@@ -92,8 +100,8 @@ struct SigningManagementView: View {
                 if let report {
                     checkRow("读取 RPPairing", report.pairingRead)
                     checkRow("认证后的 RSD 隧道", report.authenticatedTunnel)
-                    checkRow("AFC 服务连接", report.afc)
-                    checkRow("InstallationProxy 服务连接", report.installationProxy)
+                    LabeledContent("AFC 服务连接", value: report.afc.rawValue)
+                    LabeledContent("InstallationProxy 服务连接", value: report.installationProxy.rawValue)
                     Text(report.detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Text("先恢复真实定位，再运行检查。检查只连接服务，不上传 IPA、不修改设备应用或配对记录。底层调用可能耗时，离开页面不会取消正在执行的 FFI 调用。")
