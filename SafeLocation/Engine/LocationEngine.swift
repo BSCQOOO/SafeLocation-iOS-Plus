@@ -39,7 +39,7 @@ enum LocationEngine {
     private static var remoteServer: OpaquePointer?
     private static var simulation: OpaquePointer?
 
-    static var isSessionActive: Bool { simulation != nil }
+    static var isSessionActive: Bool { queue.sync { simulation != nil } }
 
     static func set(latitude: Double, longitude: Double, pairingPath: String, deviceIP: String) -> Result<Void, LocationEngineError> {
         var result: Result<Void, LocationEngineError> = .failure(.locationSet)
