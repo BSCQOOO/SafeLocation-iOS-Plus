@@ -32,6 +32,7 @@ final class SpoofController: ObservableObject {
     @Published var selectedCoordinate: CLLocationCoordinate2D?
     @Published var selectedName = "选定位置"
     @Published private(set) var simulatedCoordinate: CLLocationCoordinate2D?
+    @Published private(set) var interruptedCoordinate: CLLocationCoordinate2D?
     @Published private(set) var status: Status = .idle
     @Published var lastError: String?
     @Published private(set) var favorites = SavedPlaceStore.load("safeLocation.favorites")
@@ -54,9 +55,15 @@ final class SpoofController: ObservableObject {
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private var lastPairingPath: String?
     private let deadlineKey = "safeLocation.autoRestoreDeadline"
+    private let interruptedKey = "safeLocation.interruptedLocation"
     private let notificationID = "safeLocation.autoRestore"
 
     init() {
+        if let saved = UserDefaults.standard.array(forKey: interruptedKey) as? [Double],
+           saved.count == 2 {
+            let coordinate = CLLocationCoordinate2D(latitude: saved[0], longitude: saved[1])
+            if CLLocationCoordinate2DIsValid(coordinate) { interruptedCoordinate = coordinate }
+        }
         if let d = UserDefaults.standard.object(forKey: deadlineKey) as? Date, d > .now {
             autoRestoreDeadline = d
             autoRestoreRemaining = d.timeIntervalSinceNow
@@ -110,7 +117,7 @@ final class SpoofController: ObservableObject {
 
         // Repeated taps while already real are intentionally a no-op, but still
         // leave the controller in a clean, observable idle state.
-        guard simulatedCoordinate != nil || LocationEngine.isSessionActive else {
+        guard simulatedCoordinate != nil || interruptedCoordinate != nil || LocationEngine.isSessionActive else {
             stopMovementOnly()
             cancelAutoRestore(clearPending: true)
             routeProgress = 0
@@ -126,10 +133,11 @@ final class SpoofController: ObservableObject {
         healthTimer = nil
         cancelAutoRestore(clearPending: true)
 
-        let coordinate = simulatedCoordinate
+        let coordinate = simulatedCoordinate ?? interruptedCoordinate
         let recoveryPairingPath =
             pairingPath
             ?? lastPairingPath
+            ?? (interruptedCoordinate != nil ? PairingStore().pairingPath : nil)
         let deviceIP = TunnelConfig.targetIP
 
         isRestoringRealLocation = true
@@ -155,6 +163,8 @@ final class SpoofController: ObservableObject {
             switch result {
             case .success:
                 self.simulatedCoordinate = nil
+                self.interruptedCoordinate = nil
+                UserDefaults.standard.removeObject(forKey: self.interruptedKey)
                 self.routeProgress = 0
                 self.status = .idle
                 self.lastError = nil
@@ -184,6 +194,16 @@ final class SpoofController: ObservableObject {
                     .notificationOccurred(.error)
             }
         }
+    }
+
+    // Only dismiss after the user has independently verified the real location.
+    func acknowledgeRealLocation() {
+        guard interruptedCoordinate != nil, !isRestoringRealLocation, simulatedCoordinate == nil else { return }
+        interruptedCoordinate = nil
+        UserDefaults.standard.removeObject(forKey: interruptedKey)
+        cancelAutoRestore(clearPending: true)
+        status = .idle
+        lastError = nil
     }
 
     func emergencyRestore(
@@ -319,6 +339,7 @@ final class SpoofController: ObservableObject {
 
     private func ready(_ pairing: PairingStore) -> Bool {
         guard !isRestoringRealLocation else { return false }
+        guard interruptedCoordinate == nil else { fail("请先处理上次未正常结束的定位会话。"); return false }
         guard pairing.hasPairingFile else { fail("请先完成 iOS 27 本机配对。") ; return false }
         guard LocalDevVPN.isConnected else { fail("请先连接 LocalDevVPN。") ; return false }
         return true
@@ -331,6 +352,7 @@ final class SpoofController: ObservableObject {
         switch LocationEngine.set(latitude: c.latitude, longitude: c.longitude, pairingPath: pairing.pairingPath, deviceIP: TunnelConfig.targetIP) {
         case .success:
             lastPairingPath = pairing.pairingPath; simulatedCoordinate = c; selectedCoordinate = c; status = state; lastError = nil
+            UserDefaults.standard.set([c.latitude, c.longitude], forKey: interruptedKey)
             startBackground(); ensureTimers(pairing)
             if recent { pushRecent(c) }
             if haptic { UINotificationFeedbackGenerator().notificationOccurred(.success) }
