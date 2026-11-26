@@ -42,7 +42,9 @@ final class RoutePlanner: ObservableObject {
     @Published var errorMessage: String?
 
     func build(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D, name: String) async {
+        guard !isLoading else { return }
         isLoading = true
+        route = nil
         errorMessage = nil
         defer { isLoading = false }
 
