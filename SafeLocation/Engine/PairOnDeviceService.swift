@@ -98,7 +98,7 @@ final class PairOnDeviceService: ObservableObject {
         pin = nil
         phase = .succeeded
         teardown()
-        postNotification(title: "Safe Location 配对成功", body: "现在连接 LocalDevVPN 即可使用。")
+        postNotification(title: "Safe Location 配对成功", body: "现在连接所选设备隧道即可使用。")
     }
 
     fileprivate func handleFailure(_ message: String) {

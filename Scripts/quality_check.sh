@@ -19,7 +19,7 @@ try:
 except ImportError:
     print('PyYAML unavailable; skipping YAML parser validation')
 else:
-    for p in ['project.yml']
+    for p in ['project.yml']:
         with open(p,'r',encoding='utf-8') as f:
             yaml.safe_load(f)
         print('OK', p)
@@ -39,6 +39,7 @@ required=(
   SafeLocation/Features/Joystick/JoystickPad.swift
   SafeLocation/Features/Joystick/JoystickSheet.swift
   SafeLocation/Features/Diagnostics/DiagnosticsView.swift
+  SafeLocation/Support/TunnelProvider.swift
   SafeLocation/Support/GPXService.swift
   SafeLocation/Support/GlassUI.swift
   SafeLocation/Support/LocationProfile.swift
@@ -126,6 +127,20 @@ grep -q 'MapCoordinateConverter.wgs84ToMap' SafeLocation/Features/RootView.swift
 grep -q 'enum MapCoordinateConverter' SafeLocation/Support/MapCoordinateConverter.swift
 grep -q 'static func detectMapCoordinateSystem' SafeLocation/Support/MapCoordinateConverter.swift
 grep -q 'coordinateSpace: .mapKit' SafeLocation/Support/MapLinkResolver.swift
+grep -q 'shadowrocket://connect' SafeLocation/Support/TunnelProvider.swift
+grep -q 'TunnelConfig.effectiveIP' SafeLocation/Engine/SpoofController.swift
+if grep -q 'LocalDevVPN.isConnected' SafeLocation/Engine/SpoofController.swift; then
+  echo "Controller must not require LocalDevVPN specifically" >&2
+  exit 1
+fi
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  CHECK_DIR="$(mktemp -d)"
+  trap 'rm -rf "$CHECK_DIR"' EXIT
+  xcrun swiftc SafeLocation/Support/MapCoordinateConverter.swift SafeLocation/Support/MapLinkResolver.swift SafeLocation/Support/LocationInputParser.swift SafeLocation/Support/GPXService.swift Tests/CoordinateConversion/main.swift -o "$CHECK_DIR/coordinate-check"
+  "$CHECK_DIR/coordinate-check"
+else
+  echo "Apple SDK unavailable; skipping executable coordinate/GPX regression tests"
+fi
 grep -q 'private func toggleThreeD' SafeLocation/Features/RootView.swift
 grep -q 'UserAnnotation()' SafeLocation/Features/RootView.swift
 grep -q 'onMapCameraChange' SafeLocation/Features/RootView.swift

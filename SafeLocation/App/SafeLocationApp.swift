@@ -24,7 +24,11 @@ struct SafeLocationApp: App {
     private func handleIncoming(_ url: URL) async {
         let ext = url.pathExtension.lowercased()
         if ["plist", "mobiledevicepairing", "mobiledevicepair"].contains(ext) {
-            try? pairing.importPairing(from: url)
+            guard !session.isSpoofing, !session.isRestoringRealLocation, !session.isRoutePlaying, !session.isJoystickActive, session.interruptedCoordinate == nil || !pairing.hasPairingFile else {
+                session.lastError = "请先结束或恢复定位会话，再导入配对文件。"
+                return
+            }
+            do { try pairing.importPairing(from: url) } catch { session.lastError = error.localizedDescription }
             return
         }
 
@@ -37,7 +41,7 @@ struct SafeLocationApp: App {
             session.emergencyRestore()
 
         case "vpn":
-            LocalDevVPN.openOrInstall()
+            TunnelProvider.current.openClient()
 
         case "timer":
             let minutes = items.first(where: { $0.name == "minutes" })?.value.flatMap(Int.init)
@@ -51,7 +55,7 @@ struct SafeLocationApp: App {
                 do {
                     if let resolved = try await MapLinkResolver.resolve(input) {
                         session.select(
-                            resolved.coordinate,
+                            resolved.canonicalCoordinate(system: MapCoordinateConverter.effectiveSystem),
                             name: name ?? resolved.name,
                             autoRestoreMinutes: minutes
                         )

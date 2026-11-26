@@ -9,7 +9,7 @@ enum LocationEngineError: LocalizedError {
         switch self {
         case .invalidIP: return "Tunnel IP 无效，请检查设置。"
         case .pairingRead: return "无法读取 RPPairing 文件，请重新配对。"
-        case .tunnelCreate: return "无法建立开发者 Tunnel，请确认 LocalDevVPN 已连接。"
+        case .tunnelCreate: return "无法建立开发者 Tunnel，请确认所选客户端已提供本机设备通道。"
         case .remoteServer: return "Tunnel 已连接，但 RemoteXPC 握手失败。"
         case .simulationCreate: return "无法打开 Apple LocationSimulation 服务。"
         case .locationSet: return "设置模拟定位失败。"
@@ -39,7 +39,7 @@ enum LocationEngine {
     private static var remoteServer: OpaquePointer?
     private static var simulation: OpaquePointer?
 
-    static var isSessionActive: Bool { simulation != nil }
+    static var isSessionActive: Bool { queue.sync { simulation != nil } }
 
     static func set(latitude: Double, longitude: Double, pairingPath: String, deviceIP: String) -> Result<Void, LocationEngineError> {
         var result: Result<Void, LocationEngineError> = .failure(.locationSet)

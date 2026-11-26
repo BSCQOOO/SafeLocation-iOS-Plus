@@ -21,7 +21,7 @@
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Safe Location 在模拟定位期间维持轻量后台定位会话，以保持开发者定位模拟连接。</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Safe Location 使用本地网络完成 iOS 27 Remote Pairing，并连接 LocalDevVPN 提供的本机开发者 Tunnel。</string>
+    <string>Safe Location 使用本地网络完成 iOS 27 Remote Pairing，并连接所选隧道客户端提供的本机开发者 Tunnel。</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_remotepairing._tcp</string>
@@ -36,7 +36,7 @@
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
     <key>LSApplicationQueriesSchemes</key>
-    <array><string>localdevvpn</string></array>
+    <array><string>localdevvpn</string><string>shadowrocket</string></array>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

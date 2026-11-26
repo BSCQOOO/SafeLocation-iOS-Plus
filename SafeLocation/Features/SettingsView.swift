@@ -6,6 +6,8 @@ struct SettingsView: View {
     @EnvironmentObject private var pairService: PairOnDeviceService
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(TunnelProvider.preferenceKey) private var provider: TunnelProvider = .localDevVPN
+    @AppStorage(MapCoordinateConverter.preferenceKey) private var coordinatePreference: MapCoordinateConverter.Preference = .automatic
     @State private var tunnelIP = TunnelConfig.targetIP
     @State private var showSetup = false
     @State private var confirmRemovePairing = false
@@ -16,7 +18,7 @@ struct SettingsView: View {
                 Section("状态") {
                     LabeledContent("模拟定位", value: session.status.title)
                     LabeledContent("RPPairing", value: pairing.hasPairingFile ? "已就绪" : "未配置")
-                    LabeledContent("LocalDevVPN", value: LocalDevVPN.isConnected ? "已连接" : "未连接")
+                    LabeledContent(provider.title, value: provider.interfaceSummary)
                     LabeledContent("DVT 会话", value: LocationEngine.isSessionActive ? "活动" : "未建立")
                     if let coordinate = session.simulatedCoordinate {
                         LabeledContent("当前模拟坐标") {
@@ -35,14 +37,33 @@ struct SettingsView: View {
                 }
 
                 Section("连接") {
-                    TextField("Tunnel IP", text: $tunnelIP)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("保存 Tunnel IP") { TunnelConfig.setTargetIP(tunnelIP) }
-                    Button(LocalDevVPN.isInstalled ? "打开 LocalDevVPN" : "安装 LocalDevVPN") {
-                        LocalDevVPN.openOrInstall()
+                    Picker("设备隧道客户端", selection: $provider) {
+                        ForEach(TunnelProvider.allCases) { item in Text(item.title).tag(item) }
                     }
+                    .disabled(session.isSpoofing || session.isRestoringRealLocation || session.isRoutePlaying || session.isJoystickActive)
+                    Text(provider.instructions).font(.caption).foregroundStyle(.secondary)
+                    if provider == .localDevVPN {
+                        TextField("Tunnel IP", text: $tunnelIP)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("保存 Tunnel IP") { TunnelConfig.setTargetIP(tunnelIP) }
+                            .disabled(session.isSpoofing || session.isRestoringRealLocation)
+                    } else {
+                        LabeledContent("设备 IP", value: TunnelConfig.defaultIP)
+                    }
+                    Button(provider.actionTitle) { provider.openClient() }
+                        .disabled(provider == .shadowrocket && !provider.isInstalled)
                     Button("重新运行首次设置") { showSetup = true }
+                }
+
+                Section("地图坐标") {
+                    Picker("地图坐标模式", selection: $coordinatePreference) {
+                        ForEach(MapCoordinateConverter.Preference.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    Text("自动模式探测 Apple 地图坐标表现；若海外选点偏移，可切换 WGS-84 后重新选点。国内地图偏移可测试 GCJ-02。输入经纬度始终按 WGS-84 处理。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("移动默认值") {
@@ -51,7 +72,7 @@ struct SettingsView: View {
                             Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
                         }
                     }
-                    LabeledContent("自定义位置方案", value: "(session.customProfiles.count) 个")
+                    LabeledContent("自定义位置方案", value: "\(session.customProfiles.count) 个")
                 }
 
                 Section("导入与快捷调用") {
@@ -71,6 +92,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("删除本机 RPPairing", role: .destructive) { confirmRemovePairing = true }
+                        .disabled(session.isSpoofing || session.isRestoringRealLocation || session.interruptedCoordinate != nil || LocationEngine.isSessionActive)
                     Text("RPPairing 只保存在 App 的 Application Support 目录，并设置为当前 App 私有文件。不要把 pairing 文件分享给他人。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -105,7 +127,7 @@ struct SettingsView: View {
         }
         .confirmationDialog("删除配对文件？", isPresented: $confirmRemovePairing, titleVisibility: .visible) {
             Button("删除", role: .destructive) {
-                session.emergencyRestore()
+                guard !session.isSpoofing, !session.isRestoringRealLocation, session.interruptedCoordinate == nil, !LocationEngine.isSessionActive else { return }
                 try? pairing.removePairing()
             }
             Button("取消", role: .cancel) {}
