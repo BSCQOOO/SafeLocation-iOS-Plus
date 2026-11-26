@@ -46,6 +46,10 @@ enum LocalDevVPN {
         return nil
     }
 
+    static var hasAnyTunnelInterface: Bool {
+        ipv4InterfaceAddresses().contains { $0.name.hasPrefix("utun") }
+    }
+
     static var isConnected: Bool {
         detectedInterfaceIP != nil
     }

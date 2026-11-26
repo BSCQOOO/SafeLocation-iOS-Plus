@@ -19,6 +19,7 @@ struct RootView: View {
     @EnvironmentObject private var pairService: PairOnDeviceService
     @Environment(\.scenePhase) private var scenePhase
 
+    @AppStorage(TunnelProvider.preferenceKey) private var tunnelProvider: TunnelProvider = .localDevVPN
     @StateObject private var search = SearchController()
     @StateObject private var mapLocation = MapLocationProvider()
 
@@ -444,7 +445,8 @@ struct RootView: View {
                 if !pairing.hasPairingFile {
                     Button("重新配对") { showSetup = true }
                 }
-                Button("打开 LocalDevVPN") { LocalDevVPN.openOrInstall() }
+                Button(tunnelProvider.actionTitle) { tunnelProvider.openClient() }
+                    .disabled(tunnelProvider == .shadowrocket && !tunnelProvider.isInstalled)
                 Button("我已确认真实定位") { confirmRealLocation = true }
                     .disabled(session.isRestoringRealLocation)
                 if let error = session.lastError {
@@ -804,11 +806,11 @@ struct RootView: View {
                     )
 
                     Label(
-                        LocalDevVPN.isConnected
-                            ? "VPN 已连"
-                            : "VPN 未连",
+                        tunnelProvider.hasCandidateInterface
+                            ? "隧道待验证"
+                            : "未检测到隧道",
                         systemImage:
-                            LocalDevVPN.isConnected
+                            tunnelProvider.hasCandidateInterface
                             ? "network.badge.shield.half.filled"
                             : "network.slash"
                     )
@@ -921,14 +923,11 @@ struct RootView: View {
                     .padding(.leading, 52)
 
                 drawerRow(
-                    "LocalDevVPN",
-                    subtitle:
-                        LocalDevVPN.isConnected
-                        ? "已连接"
-                        : "点击打开连接",
+                    tunnelProvider.title,
+                    subtitle: tunnelProvider.interfaceSummary,
                     icon: "network"
                 ) {
-                    LocalDevVPN.openOrInstall()
+                    tunnelProvider.openClient()
                 }
 
                 Divider()

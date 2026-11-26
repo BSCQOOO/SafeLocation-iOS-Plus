@@ -6,6 +6,7 @@ struct SetupView: View {
     @EnvironmentObject private var pairService: PairOnDeviceService
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(TunnelProvider.preferenceKey) private var provider: TunnelProvider = .localDevVPN
     @State private var showImporter = false
     @State private var errorMessage: String?
 
@@ -76,7 +77,7 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("开启 设置 → 隐私与安全性 → 开发者模式", systemImage: "1.circle.fill")
             Label("完成本机 Remote Pairing", systemImage: "2.circle.fill")
-            Label("安装并连接 LocalDevVPN", systemImage: "3.circle.fill")
+            Label("连接所选设备隧道", systemImage: "3.circle.fill")
         }
         .font(.subheadline)
         .padding(16)
@@ -165,21 +166,25 @@ struct SetupView: View {
     private var vpnCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("LocalDevVPN", systemImage: "network")
+                Label(provider.title, systemImage: "network")
                     .font(.headline)
                 Spacer()
-                statusPill(LocalDevVPN.isConnected ? "已连接" : (LocalDevVPN.isInstalled ? "已安装" : "未安装"), ok: LocalDevVPN.isConnected)
+                statusPill(provider.hasCandidateInterface ? "待验证" : (provider.isInstalled ? "已安装" : "未安装"), ok: false)
             }
-            Text("它只提供本机开发者 Tunnel，让 Safe Location 能连接 iOS 的 DVT 服务。")
+            Picker("设备隧道客户端", selection: $provider) {
+                ForEach(TunnelProvider.allCases) { item in Text(item.title).tag(item) }
+            }
+            Text(provider.instructions)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
-                LocalDevVPN.openOrInstall()
+                provider.openClient()
             } label: {
-                Label(LocalDevVPN.isInstalled ? "打开并连接 LocalDevVPN" : "安装 LocalDevVPN", systemImage: "arrow.up.right.square")
+                Label(provider.actionTitle, systemImage: "arrow.up.right.square")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .disabled(provider == .shadowrocket && !provider.isInstalled)
         }
         .padding(16)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -189,7 +194,7 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("准备完成", systemImage: "checkmark.shield.fill")
                 .font(.headline)
-            Text("配对完成并连接 LocalDevVPN 后，回到地图选点，点击 Teleport。需要恢复时点“恢复真实”。")
+            Text("配对完成并连接所选设备隧道后，回到地图选点，点击 Teleport。需要恢复时点“恢复真实”。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

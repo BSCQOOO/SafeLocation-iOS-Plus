@@ -37,7 +37,7 @@ struct SafeLocationApp: App {
             session.emergencyRestore()
 
         case "vpn":
-            LocalDevVPN.openOrInstall()
+            TunnelProvider.current.openClient()
 
         case "timer":
             let minutes = items.first(where: { $0.name == "minutes" })?.value.flatMap(Int.init)

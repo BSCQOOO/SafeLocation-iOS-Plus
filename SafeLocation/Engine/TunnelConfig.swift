@@ -4,6 +4,10 @@ enum TunnelConfig {
     static let defaultIP = "10.7.0.1"
     static let defaultsKey = "safeLocation.targetDeviceIP"
 
+    static var effectiveIP: String {
+        TunnelProvider.current == .shadowrocket ? defaultIP : targetIP
+    }
+
     static var targetIP: String {
         let value = UserDefaults.standard.string(forKey: defaultsKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
