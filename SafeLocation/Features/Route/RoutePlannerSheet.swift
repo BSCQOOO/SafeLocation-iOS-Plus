@@ -9,6 +9,9 @@ struct RoutePlannerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var planner = RoutePlanner()
     @State private var showImporter = false
+    @State private var showExporter = false
+    @State private var exportDocument: RouteGPXDocument?
+    @State private var exportName = "SafeLocation-route"
     @State private var importedTrack: GPXTrack?
     @State private var errorText: String?
 
@@ -56,6 +59,11 @@ struct RoutePlannerSheet: View {
                             Label("开始路线模拟", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        Button {
+                            prepareExport(name: route.name, coordinates: route.coordinates)
+                        } label: {
+                            Label("导出规划路线 GPX", systemImage: "square.and.arrow.up")
+                        }
                     }
                 }
 
@@ -63,7 +71,7 @@ struct RoutePlannerSheet: View {
                     Button("导入 GPX") { showImporter = true }
                     if let importedTrack {
                         LabeledContent("轨迹", value: importedTrack.name)
-                        LabeledContent("轨迹点", value: "(importedTrack.coordinates.count)")
+                        LabeledContent("轨迹点", value: String(importedTrack.coordinates.count))
                         Picker("模拟速度", selection: $session.travelMode) {
                             ForEach(SpoofController.TravelMode.allCases) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -74,6 +82,11 @@ struct RoutePlannerSheet: View {
                             dismiss()
                         } label: {
                             Label("播放 GPX", systemImage: "play.circle.fill")
+                        }
+                        Button {
+                            prepareExport(name: importedTrack.name, coordinates: importedTrack.coordinates)
+                        } label: {
+                            Label("导出当前 GPX", systemImage: "square.and.arrow.up")
                         }
                     }
                 }
@@ -102,11 +115,20 @@ struct RoutePlannerSheet: View {
                 errorText = error.localizedDescription
             }
         }
+        .fileExporter(isPresented: $showExporter, document: exportDocument, contentType: RouteGPXDocument.contentType, defaultFilename: exportName) { result in
+            if case .failure(let error) = result { errorText = error.localizedDescription }
+        }
         .alert("路线错误", isPresented: Binding(get: { errorText != nil || planner.errorMessage != nil }, set: { if !$0 { errorText = nil; planner.errorMessage = nil } })) {
             Button("好", role: .cancel) {}
         } message: {
             Text(errorText ?? planner.errorMessage ?? "未知错误")
         }
+    }
+
+    private func prepareExport(name: String, coordinates: [CLLocationCoordinate2D]) {
+        exportDocument = RouteGPXDocument(data: GPXService.export(name: name, coordinates: coordinates))
+        exportName = "SafeLocation-route"
+        showExporter = true
     }
 
     private func buildRoute() async {
@@ -123,7 +145,26 @@ struct RoutePlannerSheet: View {
 
     private func durationString(_ seconds: TimeInterval) -> String {
         let minutes = Int((seconds / 60).rounded())
-        if minutes < 60 { return "(minutes) 分钟" }
-        return "(minutes / 60) 小时 (minutes % 60) 分"
+        if minutes < 60 { return "\(minutes) 分钟" }
+        return "\(minutes / 60) 小时 \(minutes % 60) 分"
+    }
+}
+
+private struct RouteGPXDocument: FileDocument {
+    static let contentType = UTType(filenameExtension: "gpx", conformingTo: .xml) ?? .xml
+    static var readableContentTypes: [UTType] { [contentType] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
