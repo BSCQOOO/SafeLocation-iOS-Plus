@@ -228,22 +228,29 @@ final class SpoofController: ObservableObject {
             guard let self else { return }
             let total = max(1, coordinates.count - 1)
             for i in 0..<total {
-                if Task.isCancelled { break }
+                if Task.isCancelled { return }
                 let a = coordinates[i], b = coordinates[i + 1]
                 let meters = CLLocation(latitude: a.latitude, longitude: a.longitude).distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
                 let steps = max(1, Int(ceil(meters / max(0.5, speed * 0.5))))
                 for step in 1...steps {
-                    if Task.isCancelled { break }
+                    if Task.isCancelled { return }
                     let t = Double(step) / Double(steps)
                     let c = CLLocationCoordinate2D(latitude: a.latitude + (b.latitude-a.latitude)*t, longitude: a.longitude + (b.longitude-a.longitude)*t)
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    await MainActor.run {
-                        _ = self.apply(c, pairing: pairing, recent: false, state: .routePlaying, haptic: false)
-                        self.routeProgress = min(1, (Double(i) + t) / Double(total))
+                    do { try await Task.sleep(nanoseconds: 500_000_000) }
+                    catch { return }
+                    guard !Task.isCancelled, self.isRoutePlaying, !self.isRestoringRealLocation else { return }
+                    guard self.apply(c, pairing: pairing, recent: false, state: .routePlaying, haptic: false) else {
+                        self.isRoutePlaying = false
+                        self.routeTask = nil
+                        return
                     }
+                    self.routeProgress = min(1, (Double(i) + t) / Double(total))
                 }
             }
-            await MainActor.run { self.isRoutePlaying = false; if self.isSpoofing { self.status = .active } }
+            guard !Task.isCancelled else { return }
+            self.routeTask = nil
+            self.isRoutePlaying = false
+            if self.isSpoofing { self.status = .active }
         }
     }
 
@@ -253,7 +260,9 @@ final class SpoofController: ObservableObject {
         guard ready(pairing) else { return }
         stopRoute()
         guard let start = simulatedCoordinate ?? selectedCoordinate ?? keeper.lastKnownCoordinate else { fail("请先选择位置。") ; return }
-        if simulatedCoordinate == nil { _ = apply(start, pairing: pairing, recent: false, state: .joystick, haptic: true) }
+        if simulatedCoordinate == nil {
+            guard apply(start, pairing: pairing, recent: false, state: .joystick, haptic: true) else { return }
+        }
         isJoystickActive = true; status = .joystick
         joystickTimer?.invalidate()
         joystickTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -309,6 +318,7 @@ final class SpoofController: ObservableObject {
     }
 
     private func ready(_ pairing: PairingStore) -> Bool {
+        guard !isRestoringRealLocation else { return false }
         guard pairing.hasPairingFile else { fail("请先完成 iOS 27 本机配对。") ; return false }
         guard LocalDevVPN.isConnected else { fail("请先连接 LocalDevVPN。") ; return false }
         return true
@@ -316,6 +326,7 @@ final class SpoofController: ObservableObject {
     private func fail(_ message: String) { lastError = message; status = .failed(message); UINotificationFeedbackGenerator().notificationOccurred(.error) }
 
     @discardableResult private func apply(_ c: CLLocationCoordinate2D, pairing: PairingStore, recent: Bool, state: Status, haptic: Bool) -> Bool {
+        guard !isRestoringRealLocation else { return false }
         if status != .routePlaying && status != .joystick { status = .connecting }
         switch LocationEngine.set(latitude: c.latitude, longitude: c.longitude, pairingPath: pairing.pairingPath, deviceIP: TunnelConfig.targetIP) {
         case .success:
@@ -340,14 +351,14 @@ final class SpoofController: ObservableObject {
     private func ensureTimers(_ pairing: PairingStore) {
         if resendTimer == nil {
             resendTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in Task { @MainActor in
-                guard let self, let c = self.simulatedCoordinate else { return }
+                guard let self, !self.isRestoringRealLocation, let c = self.simulatedCoordinate else { return }
                 _ = LocationEngine.set(latitude: c.latitude, longitude: c.longitude, pairingPath: pairing.pairingPath, deviceIP: TunnelConfig.targetIP)
             }}
         }
         if healthTimer == nil {
             healthTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in Task { @MainActor in
-                guard let self else { return }; self.checkAutoRestoreDeadline()
-                guard let c = self.simulatedCoordinate, !LocationEngine.isSessionActive else { return }
+                guard let self, !self.isRestoringRealLocation else { return }; self.checkAutoRestoreDeadline()
+                guard !self.isRestoringRealLocation, let c = self.simulatedCoordinate, !LocationEngine.isSessionActive else { return }
                 self.status = .reconnecting; _ = self.apply(c, pairing: pairing, recent: false, state: .active, haptic: false)
             }}
         }
